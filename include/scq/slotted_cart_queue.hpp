@@ -46,6 +46,11 @@ public:
 
     using value_type = value_t;
 
+    bool valid() const
+    {
+        return true;
+    }
+
     std::pair<scq::slot_id, std::span<value_type>> get()
     {
         return {_id, std::span<value_type>{_cart_memory, 1}};

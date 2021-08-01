@@ -1,5 +1,6 @@
 #include <condition_variable>
-#include <cstddef>
+#include <cstddef> // std::size_t
+#include <future> // future_error
 #include <mutex>
 #include <span>
 #include <stdexcept>
@@ -48,11 +49,14 @@ public:
 
     bool valid() const
     {
-        return true;
+        return _closed_queue == false;
     }
 
     std::pair<scq::slot_id, std::span<value_type>> get()
     {
+        if (!valid()) // slotted_cart_queue is already closed.
+            throw std::future_error{std::future_errc::no_state};
+
         return {_id, std::span<value_type>{_cart_memory, 1}};
     }
 
@@ -62,6 +66,7 @@ private:
 
     scq::slot_id _id{};
     value_type _cart_memory[1]{};
+    bool _closed_queue{true};
 };
 
 template <typename value_t>
@@ -107,41 +112,51 @@ public:
         }
 
         if (queue_was_empty)
-            _queue_empty_cv.notify_all();
+            _queue_empty_or_closed_cv.notify_all();
 
         if (queue_was_closed)
-            throw std::overflow_error{"Queue is already closed."};
+            throw std::overflow_error{"slotted_cart_queue is already closed."};
     }
 
     cart_type dequeue()
     {
         cart_type cart{};
-        _cart_type _tmp_cart;
+        _cart_type _tmp_cart{};
+        bool queue_was_closed;
 
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
-            _queue_empty_cv.wait(cart_management_lock, [this]
+            _queue_empty_or_closed_cv.wait(cart_management_lock, [this]
             {
-                return _cart_memory.empty() == false;
+                return _cart_memory.empty() == false || _queue_closed == true;
             });
 
-            _tmp_cart = _cart_memory.back();
-            _cart_memory.pop_back();
+            queue_was_closed = _queue_closed;
+            if (!queue_was_closed)
+            {
+                _tmp_cart = _cart_memory.back();
+                _cart_memory.pop_back();
+            }
         }
 
         // prepare return data after critical section
         cart._id = _tmp_cart.first;
         cart._cart_memory[0] = _tmp_cart.second;
+        cart._closed_queue = queue_was_closed;
 
         return cart;
     }
 
     void close()
     {
-        std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
+        {
+            std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
-        _queue_closed = true;
+            _queue_closed = true;
+        }
+
+        _queue_empty_or_closed_cv.notify_all();
     }
 
 private:
@@ -155,7 +170,7 @@ private:
     std::vector<_cart_type> _cart_memory{};
 
     std::mutex _cart_management_mutex;
-    std::condition_variable _queue_empty_cv;
+    std::condition_variable _queue_empty_or_closed_cv;
 };
 
 } // namespace scq

@@ -422,3 +422,96 @@ TEST(single_item_cart_close_queue, single_producer_no_consumer)
 
     EXPECT_THROW(queue.enqueue(scq::slot_id{2}, value_type{200}), std::overflow_error);
 }
+
+TEST(single_item_cart_close_queue, no_producer_single_consumer)
+{
+    using value_type = int;
+
+    // close first then dequeue.
+    {
+        // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
+        scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{1}};
+
+        queue.close();
+
+        // should be non-blocking if queue was closed
+        scq::cart<value_type> cart = queue.dequeue();
+
+        EXPECT_FALSE(cart.valid());
+
+        EXPECT_THROW(cart.get(), std::future_error);
+    }
+
+    // dequeue first then close.
+    {
+        // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
+        scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{1}};
+
+        std::thread dequeue_thread{[&queue]
+        {
+            // should be blocking if queue was not yet closed
+            scq::cart<value_type> cart = queue.dequeue();
+
+            EXPECT_FALSE(cart.valid());
+
+            EXPECT_THROW(cart.get(), std::future_error);
+        }};
+
+        // close after all threads block
+        std::this_thread::sleep_for(wait_time);
+        queue.close();
+
+        dequeue_thread.join();
+    }
+}
+
+TEST(single_item_cart_close_queue, no_producer_multiple_consumer)
+{
+    using value_type = int;
+
+    // close first then dequeue.
+    {
+        // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
+        scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{1}};
+
+        queue.close();
+
+        for (int i = 0; i < 5; ++i)
+        {
+            // should be non-blocking if queue was closed
+            scq::cart<value_type> cart = queue.dequeue();
+
+            EXPECT_FALSE(cart.valid());
+
+            EXPECT_THROW(cart.get(), std::future_error);
+        }
+    }
+
+    // dequeue first then close.
+    {
+        // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
+        scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{1}};
+
+        // initialise 5 consuming threads
+        std::vector<std::thread> dequeue_threads(5);
+        std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
+        {
+            return std::thread([&queue]
+            {
+                // should be blocking if queue was not yet closed
+                scq::cart<value_type> cart = queue.dequeue();
+
+                EXPECT_FALSE(cart.valid());
+
+                EXPECT_THROW(cart.get(), std::future_error);
+            });
+        });
+
+        // close after all threads block
+        std::this_thread::sleep_for(wait_time);
+        queue.close();
+
+        for (auto && dequeue_thread: dequeue_threads)
+            dequeue_thread.join();
+    }
+}

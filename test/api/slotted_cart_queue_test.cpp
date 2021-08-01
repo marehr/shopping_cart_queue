@@ -423,6 +423,53 @@ TEST(single_item_cart_close_queue, single_producer_no_consumer)
     EXPECT_THROW(queue.enqueue(scq::slot_id{2}, value_type{200}), std::overflow_error);
 }
 
+TEST(single_item_cart_close_queue, multiple_producer_no_consumer)
+{
+    using value_type = int;
+
+    // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{1}};
+
+    // initialise 5 producing threads
+    std::vector<std::thread> enqueue_threads(5);
+    std::generate(enqueue_threads.begin(), enqueue_threads.end(), [&]()
+    {
+        static size_t thread_id = 0;
+        return std::thread([thread_id = thread_id++, &queue]
+        {
+            switch (thread_id)
+            {
+                case 0:
+                    queue.enqueue(scq::slot_id{1}, value_type{100});
+                    break;
+                case 1:
+                    queue.enqueue(scq::slot_id{1}, value_type{101});
+                    break;
+                case 2:
+                    queue.enqueue(scq::slot_id{2}, value_type{200});
+                    break;
+                case 3:
+                    queue.enqueue(scq::slot_id{1}, value_type{103});
+                    break;
+                case 4:
+                    queue.enqueue(scq::slot_id{1}, value_type{102});
+                    break;
+            }
+
+            std::this_thread::sleep_for(2 * wait_time);
+
+            // queue should already be closed
+            EXPECT_THROW(queue.enqueue(scq::slot_id{0}, value_type{0}), std::overflow_error);
+        });
+    });
+
+    std::this_thread::sleep_for(wait_time);
+    queue.close();
+
+    for (auto && enqueue_thread: enqueue_threads)
+        enqueue_thread.join();
+}
+
 TEST(single_item_cart_close_queue, no_producer_single_consumer)
 {
     using value_type = int;
@@ -514,4 +561,118 @@ TEST(single_item_cart_close_queue, no_producer_multiple_consumer)
         for (auto && dequeue_thread: dequeue_threads)
             dequeue_thread.join();
     }
+}
+
+TEST(single_item_cart_close_queue, multiple_producer_multiple_consumer)
+{
+    using value_type = int;
+
+    // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{1}};
+
+    // expected set contains all (expected) results; after the test which set should be empty (each matching result will
+    // be crossed out)
+    using set_key = std::pair<std::size_t, value_type>;
+    std::set<set_key> expected
+    {
+        {1, value_type{100}},
+        {1, value_type{101}},
+        {1, value_type{102}},
+        {1, value_type{103}},
+        {2, value_type{200}}
+    };
+
+    // initialise 5 producing threads
+    std::vector<std::thread> enqueue_threads(5);
+    std::generate(enqueue_threads.begin(), enqueue_threads.end(), [&]()
+    {
+        static size_t thread_id = 0;
+        return std::thread([thread_id = thread_id++, &queue]
+        {
+            switch (thread_id)
+            {
+                case 0:
+                    queue.enqueue(scq::slot_id{1}, value_type{100});
+                    break;
+                case 1:
+                    queue.enqueue(scq::slot_id{1}, value_type{101});
+                    break;
+                case 2:
+                    queue.enqueue(scq::slot_id{2}, value_type{200});
+                    break;
+                case 3:
+                    queue.enqueue(scq::slot_id{1}, value_type{103});
+                    break;
+                case 4:
+                    queue.enqueue(scq::slot_id{1}, value_type{102});
+                    break;
+            }
+
+            std::this_thread::sleep_for(thread_id * wait_time);
+        });
+    });
+
+    std::thread late_enqueue_thread([&queue]()
+    {
+        std::this_thread::sleep_for(5 * wait_time);
+
+        // queue should already be closed
+        EXPECT_THROW(queue.enqueue(scq::slot_id{0}, value_type{0}), std::overflow_error);
+    });
+
+    // initialise 5 consuming threads
+    std::vector<std::thread> dequeue_threads(5);
+    std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
+    {
+        static std::mutex expected_mutex{};
+
+        return std::thread([&queue, &expected]
+        {
+            while (true)
+            {
+                // should be blocking if queue was not yet closed
+                scq::cart<value_type> cart = queue.dequeue();
+
+                // abort if queue was closed
+                if (!cart.valid())
+                {
+                    EXPECT_FALSE(cart.valid());
+                    EXPECT_THROW(cart.get(), std::future_error);
+                    break;
+                }
+
+                EXPECT_TRUE(cart.valid());
+
+                std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
+
+                set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
+                {
+                    std::unique_lock lk{expected_mutex};
+
+                    auto it = expected.find(actual_key);
+
+                    // lookup (slot, value) in expected set
+                    EXPECT_NE(it, expected.end());
+
+                    // and erase it to ensure that a value was only dequeued once
+                    if (it != expected.end())
+                        expected.erase(it);
+                }
+            }
+        });
+    });
+
+    for (auto && enqueue_thread: enqueue_threads)
+        enqueue_thread.join();
+
+    // close after all producer threads are finished
+    queue.close();
+
+    late_enqueue_thread.join();
+
+    for (auto && dequeue_thread: dequeue_threads)
+        dequeue_thread.join();
+
+    // all results seen
+    EXPECT_EQ(expected.size(), 0u);
 }

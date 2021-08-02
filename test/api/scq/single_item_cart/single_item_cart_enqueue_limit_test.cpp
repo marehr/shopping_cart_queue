@@ -14,7 +14,7 @@
 static constexpr std::chrono::milliseconds wait_time(10);
 
 // TODO: this might be moved to the close_test
-TEST(single_item_cart_limited_capacity_test, single_producer_no_consumer)
+TEST(single_item_cart_enqueue_limit_test, single_producer_no_consumer)
 {
     using value_type = int;
 
@@ -66,7 +66,7 @@ TEST(single_item_cart_limited_capacity_test, single_producer_no_consumer)
     EXPECT_EQ(enqueue_count.load(), 6);
 }
 
-TEST(single_item_cart_limited_capacity_test, single_producer_single_consumer)
+TEST(single_item_cart_enqueue_limit_test, single_producer_single_consumer)
 {
     using value_type = int;
 
@@ -155,7 +155,7 @@ TEST(single_item_cart_limited_capacity_test, single_producer_single_consumer)
     EXPECT_TRUE(expected.empty());
 }
 
-TEST(single_item_cart_limited_capacity_test, single_producer_multiple_consumer)
+TEST(single_item_cart_enqueue_limit_test, single_producer_multiple_consumer)
 {
     using value_type = int;
 
@@ -240,7 +240,7 @@ TEST(single_item_cart_limited_capacity_test, single_producer_multiple_consumer)
     EXPECT_TRUE(expected.empty());
 }
 
-TEST(single_item_cart_limited_capacity_test, multiple_producer_single_consumer)
+TEST(single_item_cart_enqueue_limit_test, multiple_producer_single_consumer)
 {
     using value_type = int;
 
@@ -346,7 +346,7 @@ TEST(single_item_cart_limited_capacity_test, multiple_producer_single_consumer)
     EXPECT_TRUE(expected.empty());
 }
 
-TEST(single_item_cart_limited_capacity_test, multiple_producer_multiple_consumer)
+TEST(single_item_cart_enqueue_limit_test, multiple_producer_multiple_consumer)
 {
     using value_type = int;
 

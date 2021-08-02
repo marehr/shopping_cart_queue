@@ -102,6 +102,11 @@ public:
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
+            _queue_full_or_closed_cv.wait(cart_management_lock, [this]
+            {
+                return _cart_memory.size() < _slot_count || _queue_closed == true;
+            });
+
             queue_was_closed = _queue_closed;
             queue_was_empty = _cart_memory.empty();
 
@@ -122,7 +127,9 @@ public:
     {
         cart_type cart{};
         _cart_type _tmp_cart{};
-        bool queue_was_closed;
+
+        bool queue_was_full{};
+        bool queue_was_closed{};
 
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
@@ -133,12 +140,21 @@ public:
             });
 
             queue_was_closed = _queue_closed;
+            queue_was_full = _cart_memory.size() >= _slot_count;
+
             if (!queue_was_closed)
             {
                 _tmp_cart = _cart_memory.back();
                 _cart_memory.pop_back();
             }
         }
+
+        if (queue_was_full)
+            _queue_full_or_closed_cv.notify_all();
+
+        // NOTE: this also handles queue_was_closed; if queue_was_closed we return a no_state cart
+        // this has a asymmetric behaviour from enqueue as we assume multiple "polling" (dequeue) threads. The queue
+        // should be closed after all the data was pushed.
 
         // prepare return data after critical section
         cart._id = _tmp_cart.first;
@@ -157,6 +173,7 @@ public:
         }
 
         _queue_empty_or_closed_cv.notify_all();
+        _queue_full_or_closed_cv.notify_all();
     }
 
 private:
@@ -171,6 +188,7 @@ private:
 
     std::mutex _cart_management_mutex;
     std::condition_variable _queue_empty_or_closed_cv;
+    std::condition_variable _queue_full_or_closed_cv;
 };
 
 } // namespace scq

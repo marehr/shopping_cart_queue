@@ -1,0 +1,3 @@
+add_api_test (single_item_cart_close_queue_test.cpp)
+add_api_test (single_item_cart_concurrent_test.cpp)
+add_api_test (single_item_cart_sequential_test.cpp)

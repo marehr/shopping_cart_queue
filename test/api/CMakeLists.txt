@@ -7,4 +7,4 @@ target_use_datasources (convert_fastq_test FILES in.fastq)
 add_library ("${PROJECT_NAME}_lib" INTERFACE)
 target_include_directories ("${PROJECT_NAME}_lib" INTERFACE "${CMAKE_SOURCE_DIR}/include")
 
-add_api_test (slotted_cart_queue_test.cpp)
+add_subdirectory (scq)

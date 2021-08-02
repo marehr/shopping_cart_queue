@@ -63,6 +63,38 @@ TEST(single_item_cart_sequential, single_enqueue_dequeue)
     }
 }
 
+template <typename item_t>
+struct concurrent_cross_off_list
+{
+    concurrent_cross_off_list(std::initializer_list<item_t> list)
+        : _set{list}
+    {}
+
+    // returns true if item was crossed out
+    bool cross_off(item_t item)
+    {
+        std::unique_lock lk{_set_mutex};
+
+        auto it = _set.find(item);
+        bool crossed_off = it != _set.end();
+
+        if (crossed_off)
+            _set.erase(it);
+
+        return crossed_off;
+    }
+
+    bool empty()
+    {
+        return _set.empty();
+    }
+
+private:
+    std::set<item_t> _set;
+
+    std::mutex _set_mutex{};
+};
+
 TEST(single_item_cart_sequential, multiple_enqueue_dequeue)
 {
     using value_type = int;
@@ -72,8 +104,7 @@ TEST(single_item_cart_sequential, multiple_enqueue_dequeue)
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)
-    using set_key = std::pair<std::size_t, value_type>;
-    std::set<set_key> expected
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
         {1, value_type{100}},
         {1, value_type{101}},
@@ -94,19 +125,14 @@ TEST(single_item_cart_sequential, multiple_enqueue_dequeue)
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
-        set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
-        auto it = expected.find(actual_key);
-
-        // lookup (slot, value) in expected set
-        EXPECT_NE(it, expected.end()) << (i + 1) << ". iteration";
-
-        // and erase it to ensure that a value was only dequeued once
-        if (it != expected.end())
-            expected.erase(it);
+        EXPECT_TRUE(expected.cross_off({
+            std::get<0>(cart_data).slot_id,
+            std::get<1>(cart_data)[0]
+        }));
     }
 
     // all results seen
-    EXPECT_EQ(expected.size(), 0u);
+    EXPECT_TRUE(expected.empty());
 }
 
 TEST(single_item_cart_concurrent, single_producer_single_consumer)
@@ -118,8 +144,7 @@ TEST(single_item_cart_concurrent, single_producer_single_consumer)
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)
-    using set_key = std::pair<std::size_t, value_type>;
-    std::set<set_key> expected
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
         {1, value_type{100}},
         {1, value_type{101}},
@@ -147,21 +172,16 @@ TEST(single_item_cart_concurrent, single_producer_single_consumer)
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
-        set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
-        auto it = expected.find(actual_key);
-
-        // lookup (slot, value) in expected set
-        EXPECT_NE(it, expected.end()) << (i + 1) << ". iteration";
-
-        // and erase it to ensure that a value was only dequeued once
-        if (it != expected.end())
-            expected.erase(it);
+        EXPECT_TRUE(expected.cross_off({
+            std::get<0>(cart_data).slot_id,
+            std::get<1>(cart_data)[0]
+        }));
     }
 
     enqueue_thread.join();
 
     // all results seen
-    EXPECT_EQ(expected.size(), 0u);
+    EXPECT_TRUE(expected.empty());
 }
 
 TEST(single_item_cart_concurrent, single_producer_multiple_consumer)
@@ -173,8 +193,7 @@ TEST(single_item_cart_concurrent, single_producer_multiple_consumer)
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)
-    using set_key = std::pair<std::size_t, value_type>;
-    std::set<set_key> expected
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
         {1, value_type{100}},
         {1, value_type{101}},
@@ -201,28 +220,16 @@ TEST(single_item_cart_concurrent, single_producer_multiple_consumer)
     std::vector<std::thread> dequeue_threads(5);
     std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
     {
-        static std::mutex expected_mutex{};
-
         return std::thread([&queue, &expected]
         {
             scq::cart<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
-            set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
-
-            {
-                std::unique_lock lk{expected_mutex};
-
-                auto it = expected.find(actual_key);
-
-                // lookup (slot, value) in expected set
-                EXPECT_NE(it, expected.end());
-
-                // and erase it to ensure that a value was only dequeued once
-                if (it != expected.end())
-                    expected.erase(it);
-            }
+            EXPECT_TRUE(expected.cross_off({
+                std::get<0>(cart_data).slot_id,
+                std::get<1>(cart_data)[0]
+            }));
         });
     });
 
@@ -232,7 +239,7 @@ TEST(single_item_cart_concurrent, single_producer_multiple_consumer)
         dequeue_thread.join();
 
     // all results seen
-    EXPECT_EQ(expected.size(), 0u);
+    EXPECT_TRUE(expected.empty());
 }
 
 TEST(single_item_cart_concurrent, multiple_producer_single_consumer)
@@ -244,8 +251,7 @@ TEST(single_item_cart_concurrent, multiple_producer_single_consumer)
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)
-    using set_key = std::pair<std::size_t, value_type>;
-    std::set<set_key> expected
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
         {1, value_type{100}},
         {1, value_type{101}},
@@ -290,22 +296,17 @@ TEST(single_item_cart_concurrent, multiple_producer_single_consumer)
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
-        set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
-        auto it = expected.find(actual_key);
-
-        // lookup (slot, value) in expected set
-        EXPECT_NE(it, expected.end()) << (i + 1) << ". iteration";
-
-        // and erase it to ensure that a value was only dequeued once
-        if (it != expected.end())
-            expected.erase(it);
+        EXPECT_TRUE(expected.cross_off({
+            std::get<0>(cart_data).slot_id,
+            std::get<1>(cart_data)[0]
+        }));
     }
 
     for (auto && enqueue_thread: enqueue_threads)
         enqueue_thread.join();
 
     // all results seen
-    EXPECT_EQ(expected.size(), 0u);
+    EXPECT_TRUE(expected.empty());
 }
 
 TEST(single_item_cart_concurrent, multiple_producer_multiple_consumer)
@@ -317,8 +318,7 @@ TEST(single_item_cart_concurrent, multiple_producer_multiple_consumer)
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)
-    using set_key = std::pair<std::size_t, value_type>;
-    std::set<set_key> expected
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
         {1, value_type{100}},
         {1, value_type{101}},
@@ -361,28 +361,16 @@ TEST(single_item_cart_concurrent, multiple_producer_multiple_consumer)
     std::vector<std::thread> dequeue_threads(5);
     std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
     {
-        static std::mutex expected_mutex{};
-
         return std::thread([&queue, &expected]
         {
             scq::cart<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
-            set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
-
-            {
-                std::unique_lock lk{expected_mutex};
-
-                auto it = expected.find(actual_key);
-
-                // lookup (slot, value) in expected set
-                EXPECT_NE(it, expected.end());
-
-                // and erase it to ensure that a value was only dequeued once
-                if (it != expected.end())
-                    expected.erase(it);
-            }
+            EXPECT_TRUE(expected.cross_off({
+                std::get<0>(cart_data).slot_id,
+                std::get<1>(cart_data)[0]
+            }));
         });
     });
 
@@ -393,7 +381,7 @@ TEST(single_item_cart_concurrent, multiple_producer_multiple_consumer)
         dequeue_thread.join();
 
     // all results seen
-    EXPECT_EQ(expected.size(), 0u);
+    EXPECT_TRUE(expected.empty());
 }
 
 TEST(single_item_cart_close_queue, no_producer_no_consumer)
@@ -572,8 +560,7 @@ TEST(single_item_cart_close_queue, multiple_producer_multiple_consumer)
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)
-    using set_key = std::pair<std::size_t, value_type>;
-    std::set<set_key> expected
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
         {1, value_type{100}},
         {1, value_type{101}},
@@ -624,8 +611,6 @@ TEST(single_item_cart_close_queue, multiple_producer_multiple_consumer)
     std::vector<std::thread> dequeue_threads(5);
     std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
     {
-        static std::mutex expected_mutex{};
-
         return std::thread([&queue, &expected]
         {
             while (true)
@@ -645,19 +630,10 @@ TEST(single_item_cart_close_queue, multiple_producer_multiple_consumer)
 
                 std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
-                set_key actual_key{std::get<0>(cart_data).slot_id, std::get<1>(cart_data)[0]};
-                {
-                    std::unique_lock lk{expected_mutex};
-
-                    auto it = expected.find(actual_key);
-
-                    // lookup (slot, value) in expected set
-                    EXPECT_NE(it, expected.end());
-
-                    // and erase it to ensure that a value was only dequeued once
-                    if (it != expected.end())
-                        expected.erase(it);
-                }
+                EXPECT_TRUE(expected.cross_off({
+                    std::get<0>(cart_data).slot_id,
+                    std::get<1>(cart_data)[0]
+                }));
             }
         });
     });
@@ -674,5 +650,5 @@ TEST(single_item_cart_close_queue, multiple_producer_multiple_consumer)
         dequeue_thread.join();
 
     // all results seen
-    EXPECT_EQ(expected.size(), 0u);
+    EXPECT_TRUE(expected.empty());
 }

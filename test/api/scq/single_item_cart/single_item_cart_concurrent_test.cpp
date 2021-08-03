@@ -32,6 +32,7 @@ TEST(single_item_cart_concurrent, single_producer_single_consumer)
 
     std::thread enqueue_thread{[&queue]()
     {
+        // all enqueues are guaranteed to be non-blocking
         std::this_thread::sleep_for(wait_time);
         queue.enqueue(scq::slot_id{1}, value_type{100});
         queue.enqueue(scq::slot_id{1}, value_type{101});
@@ -45,7 +46,7 @@ TEST(single_item_cart_concurrent, single_producer_single_consumer)
 
     for (int i = 0; i < 5; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart<value_type> cart = queue.dequeue(); // might block
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -81,6 +82,7 @@ TEST(single_item_cart_concurrent, single_producer_multiple_consumer)
 
     std::thread enqueue_thread{[&queue]()
     {
+        // all enqueues are guaranteed to be non-blocking
         std::this_thread::sleep_for(wait_time);
         queue.enqueue(scq::slot_id{1}, value_type{100});
         queue.enqueue(scq::slot_id{1}, value_type{101});
@@ -99,7 +101,7 @@ TEST(single_item_cart_concurrent, single_producer_multiple_consumer)
     {
         return std::thread([&queue, &expected]
         {
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart<value_type> cart = queue.dequeue(); // might block
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -146,6 +148,7 @@ TEST(single_item_cart_concurrent, multiple_producer_single_consumer)
         {
             std::this_thread::sleep_for(thread_id * wait_time);
 
+            // all enqueues are guaranteed to be non-blocking
             switch (thread_id)
             {
                 case 0:
@@ -169,7 +172,7 @@ TEST(single_item_cart_concurrent, multiple_producer_single_consumer)
 
     for (int i = 0; i < 5; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart<value_type> cart = queue.dequeue(); // might block
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -213,6 +216,7 @@ TEST(single_item_cart_concurrent, multiple_producer_multiple_consumer)
         {
             std::this_thread::sleep_for(thread_id * wait_time);
 
+            // all enqueues are guaranteed to be non-blocking
             switch (thread_id)
             {
                 case 0:
@@ -240,7 +244,7 @@ TEST(single_item_cart_concurrent, multiple_producer_multiple_consumer)
     {
         return std::thread([&queue, &expected]
         {
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart<value_type> cart = queue.dequeue(); // might block
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 

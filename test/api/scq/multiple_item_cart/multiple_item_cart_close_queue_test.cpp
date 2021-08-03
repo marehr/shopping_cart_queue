@@ -143,3 +143,102 @@ TEST(multiple_item_cart_close_queue, multiple_producer_no_consumer_enqueue_after
         enqueue_thread.join();
 }
 
+TEST(multiple_item_cart_close_queue, no_producer_single_consumer_dequeue_after_close)
+{
+    using value_type = int;
+
+    // close first then dequeue.
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    queue.close();
+
+    // should be non-blocking if queue was closed (without close it would be blocking)
+    scq::cart<value_type> cart = queue.dequeue();
+
+    EXPECT_FALSE(cart.valid());
+
+    EXPECT_THROW(cart.get(), std::future_error);
+}
+
+TEST(multiple_item_cart_close_queue, no_producer_single_consumer_release_blocking_dequeue_when_close)
+{
+    using value_type = int;
+
+    // dequeue first then close.
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    std::thread dequeue_thread{[&queue]
+    {
+        // should be blocking if queue was not yet closed
+        scq::cart<value_type> cart = queue.dequeue();
+
+        EXPECT_FALSE(cart.valid());
+
+        EXPECT_THROW(cart.get(), std::future_error);
+    }};
+
+    // try to close after all threads block
+    // this wait does not guarantee that all threads will block by a dequeue, but even if they are not blocking yet,
+    // they will return an invalid cart (i.e. close-then-dequeue and dequeue-then-close have the same result).
+    std::this_thread::sleep_for(wait_time);
+    queue.close();
+
+    dequeue_thread.join();
+}
+
+TEST(multiple_item_cart_close_queue, no_producer_multiple_consumer_dequeue_after_close)
+{
+    using value_type = int;
+
+    // close first then dequeue.
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    queue.close();
+
+    for (int i = 0; i < 5; ++i) // TODO: this isn't really multiple consumer.
+    {
+        // should be non-blocking if queue was closed
+        scq::cart<value_type> cart = queue.dequeue();
+
+        EXPECT_FALSE(cart.valid());
+
+        EXPECT_THROW(cart.get(), std::future_error);
+    }
+}
+
+TEST(multiple_item_cart_close_queue, no_producer_multiple_consumer_release_blocking_dequeue_when_close)
+{
+    using value_type = int;
+
+    // dequeue first then close.
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    // initialise 5 consuming threads
+    std::vector<std::thread> dequeue_threads(5);
+    std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
+    {
+        return std::thread([&queue]
+        {
+            // should be blocking if queue was not yet closed
+            scq::cart<value_type> cart = queue.dequeue();
+
+            EXPECT_FALSE(cart.valid());
+
+            EXPECT_THROW(cart.get(), std::future_error);
+        });
+    });
+
+    // try to close after all threads block
+    // this wait does not guarantee that all threads will block by a dequeue, but even if they are not blocking yet,
+    // they will return an invalid cart (i.e. close-then-dequeue and dequeue-then-close have the same result).
+    std::this_thread::sleep_for(wait_time);
+    queue.close();
+
+    for (auto && dequeue_thread: dequeue_threads)
+        dequeue_thread.join();
+}
+

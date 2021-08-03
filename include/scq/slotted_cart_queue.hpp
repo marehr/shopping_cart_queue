@@ -57,7 +57,7 @@ public:
         if (!valid()) // slotted_cart_queue is already closed and no further elements.
             throw std::future_error{std::future_errc::no_state};
 
-        return {_id, std::span<value_type>{_cart_memory, 1}};
+        return {_id, std::span<value_type>{_cart_memory.data(), _cart_memory.size()}};
     }
 
 private:
@@ -65,7 +65,7 @@ private:
     friend class slotted_cart_queue;
 
     scq::slot_id _id{};
-    value_type _cart_memory[1]{};
+    std::vector<value_type> _cart_memory{};
     bool _valid{true};
 };
 
@@ -112,7 +112,16 @@ public:
 
             if (!queue_was_closed)
             {
-                _cart_memory.emplace_back(slot, std::move(value));
+                assert(_slot0_cart.second.size() < _cart_capacity);
+
+                _slot0_cart.first = slot; // TODO manage carts in slots instead of a single slot
+                _slot0_cart.second.push_back(std::move(value));
+
+                if (_slot0_cart.second.size() >= _cart_capacity)
+                {
+                    _cart_memory.emplace_back(std::move(_slot0_cart));
+                    _slot0_cart = {}; // reset slotted cart
+                }
             }
         }
 
@@ -136,6 +145,7 @@ public:
 
             _queue_empty_or_closed_cv.wait(cart_management_lock, [this]
             {
+                // wait until first cart is full
                 return _cart_memory.empty() == false || _queue_closed == true;
             });
 
@@ -144,7 +154,7 @@ public:
 
             if (!queue_was_empty)
             {
-                _tmp_cart = _cart_memory.back();
+                _tmp_cart = std::move(_cart_memory.back());
                 _cart_memory.pop_back();
             }
         }
@@ -161,7 +171,7 @@ public:
         // should be closed after all the data was pushed.
 
         cart._id = _tmp_cart.first;
-        cart._cart_memory[0] = _tmp_cart.second;
+        cart._cart_memory = std::move(_tmp_cart.second);
         cart._valid = !queue_was_empty;
 
         return cart;
@@ -184,10 +194,12 @@ private:
     std::size_t _cart_count{};
     std::size_t _cart_capacity{};
 
-    using _cart_type = std::pair<slot_id, value_t>;
+    using _cart_type = std::pair<slot_id, std::vector<value_t>>;
 
     bool _queue_closed{false};
     std::vector<_cart_type> _cart_memory{};
+
+    _cart_type _slot0_cart{};
 
     std::mutex _cart_management_mutex;
     std::condition_variable _queue_empty_or_closed_cv;

@@ -85,7 +85,8 @@ public:
     slotted_cart_queue(slot_count slots, cart_count carts, cart_capacity cart_capacity)
         : _slot_count{slots.slot_count},
           _cart_count{carts.cart_count},
-          _cart_capacity{cart_capacity.cart_capacity}
+          _cart_capacity{cart_capacity.cart_capacity},
+          _to_fill_carts(slots.slot_count) // default init slot_count many vectors
     {
         if (_cart_count < _slot_count)
             throw std::logic_error{"The number of carts must be >= the number of slots."};
@@ -94,7 +95,7 @@ public:
             throw std::logic_error{"The cart capacity must be >= 1."};
     }
 
-    void enqueue(slot_id slot, value_t value)
+    void enqueue(slot_id slot, value_type value)
     {
         bool queue_was_empty{};
         bool queue_was_closed{};
@@ -112,15 +113,15 @@ public:
 
             if (!queue_was_closed)
             {
-                assert(_slot0_cart.second.size() < _cart_capacity);
+                std::vector<value_type> & slot_cart = _to_fill_carts[slot.slot_id];
+                assert(slot_cart.size() < _cart_capacity);
 
-                _slot0_cart.first = slot; // TODO manage carts in slots instead of a single slot
-                _slot0_cart.second.push_back(std::move(value));
+                slot_cart.emplace_back(std::move(value));
 
-                if (_slot0_cart.second.size() >= _cart_capacity)
+                if (slot_cart.size() >= _cart_capacity)
                 {
-                    _cart_memory.emplace_back(std::move(_slot0_cart));
-                    _slot0_cart = {}; // reset slotted cart
+                    _cart_memory.emplace_back(slot, std::move(slot_cart));
+                    slot_cart = {}; // reset slotted cart
                 }
             }
         }
@@ -194,12 +195,12 @@ private:
     std::size_t _cart_count{};
     std::size_t _cart_capacity{};
 
-    using _cart_type = std::pair<slot_id, std::vector<value_t>>;
+    using _cart_type = std::pair<slot_id, std::vector<value_type>>;
 
     bool _queue_closed{false};
     std::vector<_cart_type> _cart_memory{};
 
-    _cart_type _slot0_cart{};
+    std::vector<std::vector<value_type>> _to_fill_carts{}; // position is slot_id
 
     std::mutex _cart_management_mutex;
     std::condition_variable _queue_empty_or_closed_cv;

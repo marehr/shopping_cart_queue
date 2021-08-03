@@ -87,3 +87,59 @@ TEST(multiple_item_cart_close_queue, single_producer_no_consumer_release_blockin
     EXPECT_EQ(enqueue_count.load(), 6);
 }
 
+TEST(multiple_item_cart_close_queue, multiple_producer_no_consumer_enqueue_after_close)
+{
+    using value_type = int;
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    // count number of enqueues
+    atomic_count enqueue_count{};
+
+    // initialise 5 producing threads
+    std::vector<std::thread> enqueue_threads(5);
+    std::generate(enqueue_threads.begin(), enqueue_threads.end(), [&]()
+    {
+        static size_t thread_id = 0;
+        return std::thread([thread_id = thread_id++, &queue, &enqueue_count]
+        {
+            switch (thread_id)
+            {
+                case 0:
+                    queue.enqueue(scq::slot_id{1}, value_type{100});
+                    break;
+                case 1:
+                    queue.enqueue(scq::slot_id{1}, value_type{101});
+                    break;
+                case 2:
+                    queue.enqueue(scq::slot_id{2}, value_type{200});
+                    break;
+                case 3:
+                    queue.enqueue(scq::slot_id{1}, value_type{103});
+                    break;
+                case 4:
+                    queue.enqueue(scq::slot_id{1}, value_type{102});
+                    break;
+            }
+
+            ++enqueue_count;
+
+            // barrier: wait until queue was closed (>= 6 means queue was closed)
+            enqueue_count.wait_at_least(6);
+
+            // queue should already be closed
+            EXPECT_THROW(queue.enqueue(scq::slot_id{0}, value_type{0}), std::overflow_error);
+        });
+    });
+
+    // barrier: wait until all elements are added
+    enqueue_count.wait_at_least(5);
+
+    queue.close();
+
+    ++enqueue_count; // signal that queue is closed
+
+    for (auto && enqueue_thread: enqueue_threads)
+        enqueue_thread.join();
+}
+

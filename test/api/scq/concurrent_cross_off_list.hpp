@@ -25,6 +25,11 @@ struct concurrent_cross_off_list
         return crossed_off;
     }
 
+    void insert(item_t item)
+    {
+        _set.insert(std::move(item));
+    }
+
     bool empty()
     {
         return _set.empty();

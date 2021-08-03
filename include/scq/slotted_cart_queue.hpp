@@ -49,12 +49,12 @@ public:
 
     bool valid() const
     {
-        return _closed_queue == false;
+        return _valid == true;
     }
 
     std::pair<scq::slot_id, std::span<value_type>> get()
     {
-        if (!valid()) // slotted_cart_queue is already closed.
+        if (!valid()) // slotted_cart_queue is already closed and no further elements.
             throw std::future_error{std::future_errc::no_state};
 
         return {_id, std::span<value_type>{_cart_memory, 1}};
@@ -66,7 +66,7 @@ private:
 
     scq::slot_id _id{};
     value_type _cart_memory[1]{};
-    bool _closed_queue{true};
+    bool _valid{true};
 };
 
 template <typename value_t>
@@ -129,7 +129,7 @@ public:
         _cart_type _tmp_cart{};
 
         bool queue_was_full{};
-        bool queue_was_closed{};
+        bool queue_was_empty{};
 
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
@@ -139,27 +139,30 @@ public:
                 return _cart_memory.empty() == false || _queue_closed == true;
             });
 
-            queue_was_closed = _queue_closed;
+            queue_was_empty = _cart_memory.size() == 0;
             queue_was_full = _cart_memory.size() >= _slot_count;
 
-            if (!queue_was_closed)
+            if (!queue_was_empty)
             {
                 _tmp_cart = _cart_memory.back();
                 _cart_memory.pop_back();
             }
         }
 
+        //
+        // prepare return data after critical section
+        //
+
         if (queue_was_full)
             _queue_full_or_closed_cv.notify_all();
 
-        // NOTE: this also handles queue_was_closed; if queue_was_closed we return a no_state cart
+        // NOTE: this also handles queue_was_empty; if queue_was_empty we return a no_state cart
         // this has a asymmetric behaviour from enqueue as we assume multiple "polling" (dequeue) threads. The queue
         // should be closed after all the data was pushed.
 
-        // prepare return data after critical section
         cart._id = _tmp_cart.first;
         cart._cart_memory[0] = _tmp_cart.second;
-        cart._closed_queue = queue_was_closed;
+        cart._valid = !queue_was_empty;
 
         return cart;
     }

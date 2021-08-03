@@ -57,7 +57,7 @@ public:
         if (!valid()) // slotted_cart_queue is already closed and no further elements.
             throw std::future_error{std::future_errc::no_state};
 
-        return {_id, std::span<value_type>{_cart_memory.data(), _cart_memory.size()}};
+        return {_id, std::span<value_type>{_cart_span.data(), _cart_span.size()}};
     }
 
 private:
@@ -65,7 +65,7 @@ private:
     friend class slotted_cart_queue;
 
     scq::slot_id _id{};
-    std::vector<value_type> _cart_memory{};
+    std::vector<value_type> _cart_span{};
     bool _valid{true};
 };
 
@@ -171,7 +171,7 @@ public:
         // should be closed after all the data was pushed.
 
         cart._id = _tmp_cart.first;
-        cart._cart_memory = std::move(_tmp_cart.second);
+        cart._cart_span = std::move(_tmp_cart.second); // TODO: memory should be owned by the queue not the cart
         cart._valid = !queue_was_empty;
 
         return cart;

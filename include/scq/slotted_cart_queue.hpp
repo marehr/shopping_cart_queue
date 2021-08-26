@@ -105,11 +105,11 @@ public:
 
             _queue_full_or_closed_cv.wait(cart_management_lock, [this]
             {
-                return _cart_memory.size() < _slot_count || _queue_closed == true;
+                return !full_slot_cart_queue_is_full() || _queue_closed == true;
             });
 
             queue_was_closed = _queue_closed;
-            queue_was_empty = _cart_memory.empty();
+            queue_was_empty = full_slot_cart_queue_is_empty();
 
             if (!queue_was_closed)
             {
@@ -140,11 +140,11 @@ public:
             _queue_empty_or_closed_cv.wait(cart_management_lock, [this]
             {
                 // wait until first cart is full
-                return _cart_memory.empty() == false || _queue_closed == true;
+                return !full_slot_cart_queue_is_empty() || _queue_closed == true;
             });
 
-            queue_was_empty = _cart_memory.size() == 0;
-            queue_was_full = _cart_memory.size() >= _slot_count;
+            queue_was_empty = full_slot_cart_queue_is_empty();
+            queue_was_full = full_slot_cart_queue_is_full();
 
             if (!queue_was_empty)
             {
@@ -171,17 +171,7 @@ public:
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
             _queue_closed = true;
-
-            // TODO: if pending slots are more than queue capacity? is that a problem?
-
-            // put all non-full carts into full queue (no element can't be added any more and all pending elements =
-            // active to fill elements must be processed)
-            for (size_t slot_id = 0u; slot_id < _to_fill_carts.size(); ++slot_id)
-            {
-                scq::slot_id slot{slot_id};
-                if (slot_cart_is_non_empty(slot))
-                    move_slot_cart_into_full_cart_queue(slot);
-            }
+            move_non_empty_slot_carts_into_full_cart_queue();
         }
 
         _queue_empty_or_closed_cv.notify_all();
@@ -194,6 +184,20 @@ private:
     std::size_t _cart_capacity{};
 
     using _cart_type = std::pair<slot_id, std::vector<value_type>>;
+
+    void move_non_empty_slot_carts_into_full_cart_queue()
+    {
+        // TODO: if pending slots are more than queue capacity? is that a problem?
+
+        // put all non-full carts into full queue (no element can't be added any more and all pending elements =
+        // active to fill elements must be processed)
+        for (size_t slot_id = 0u; slot_id < _to_fill_carts.size(); ++slot_id)
+        {
+            scq::slot_id slot{slot_id};
+            if (!slot_cart_is_empty(slot))
+                move_slot_cart_into_full_cart_queue(slot);
+        }
+    }
 
     cart_type create_cart_future(_cart_type tmp_cart, bool queue_was_empty)
     {
@@ -220,10 +224,20 @@ private:
         return tmp;
     }
 
-    bool slot_cart_is_non_empty(scq::slot_id slot)
+    bool full_slot_cart_queue_is_empty()
+    {
+        return _cart_memory.empty();
+    }
+
+    bool full_slot_cart_queue_is_full()
+    {
+        return _cart_memory.size() >= _slot_count;
+    }
+
+    bool slot_cart_is_empty(scq::slot_id slot)
     {
         auto & slot_cart = _to_fill_carts[slot.slot_id];
-        return slot_cart.size() > 0;
+        return slot_cart.empty();
     }
 
     bool slot_cart_is_full(scq::slot_id slot)

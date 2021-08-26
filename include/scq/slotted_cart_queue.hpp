@@ -117,15 +117,17 @@ public:
 
             if (!queue_was_closed && slot_cart_is_empty(slot))
             {
-                _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this]
+                _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this, slot]
                 {
-                    // wait until an empty cart is ready
-                    return !empty_slot_cart_queue_is_empty() || _queue_closed == true;
+                    // wait until either an empty cart is ready, or the slot has a cart, or the queue was closed
+                    return !empty_slot_cart_queue_is_empty() || !slot_cart_is_empty(slot) || _queue_closed == true;
                 });
 
                 queue_was_closed = _queue_closed;
 
-                if (!queue_was_closed)
+                // if the current slot still has no cart and we have an available empty cart, use that empty cart in
+                // this slot
+                if (!queue_was_closed && slot_cart_is_empty(slot) && !empty_slot_cart_queue_is_empty())
                 {
                     --_empty_cart_count;
                     assert_cart_count_variant();

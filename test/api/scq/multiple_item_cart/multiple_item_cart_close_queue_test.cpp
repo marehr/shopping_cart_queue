@@ -336,7 +336,7 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
 {
     using value_type = int;
 
-    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{7}, scq::cart_capacity{2}};
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
     // be crossed out)

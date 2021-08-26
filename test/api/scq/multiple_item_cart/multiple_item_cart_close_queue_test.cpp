@@ -342,28 +342,28 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     // be crossed out)
     concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
     {
-        {0, value_type{0}},
+        {0, value_type{0}}, // cart 1
         {1, value_type{100}},
-        {1, value_type{101}},
+        {1, value_type{101}}, // cart 2
         {1, value_type{102}},
-        {1, value_type{103}},
-        {1, value_type{104}},
-        {2, value_type{200}},
+        {1, value_type{103}}, // cart 3
+        {1, value_type{104}}, // cart 4
+        {2, value_type{200}}, // cart 5
         {2, value_type{201}},
-        {3, value_type{300}},
-        {4, value_type{400}}
+        {3, value_type{300}}, // cart 6
+        {4, value_type{400}} // cart 7
     };
 
-    queue.enqueue(scq::slot_id{0}, value_type{0}); // half-filled cart
+    queue.enqueue(scq::slot_id{0}, value_type{0}); // half-filled cart 1
     queue.enqueue(scq::slot_id{1}, value_type{100});
     queue.enqueue(scq::slot_id{1}, value_type{101}); // full-cart 1
     queue.enqueue(scq::slot_id{1}, value_type{102});
     queue.enqueue(scq::slot_id{1}, value_type{103}); // full-cart 2
-    queue.enqueue(scq::slot_id{1}, value_type{104}); // half-filled cart
+    queue.enqueue(scq::slot_id{1}, value_type{104}); // half-filled cart 2
     queue.enqueue(scq::slot_id{2}, value_type{200});
     queue.enqueue(scq::slot_id{2}, value_type{201}); // full-cart 3
-    queue.enqueue(scq::slot_id{3}, value_type{300}); // half-filled cart
-    queue.enqueue(scq::slot_id{4}, value_type{400}); // half-filled cart
+    queue.enqueue(scq::slot_id{3}, value_type{300}); // half-filled cart 3
+    queue.enqueue(scq::slot_id{4}, value_type{400}); // half-filled cart 4
 
     queue.close();
 
@@ -397,3 +397,124 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     EXPECT_TRUE(expected.empty());
 }
 
+// TODO: add blocking enqueue test
+// TODO: add maybe blocking enqueue / dequeue test
+TEST(multiple_item_cart_close_queue, multiple_producer_multiple_consumer_release_blocking_dequeue_when_close)
+{
+    // this tests whether a blocking dequeue (= queue is empty) will be released by a close.
+
+    using value_type = int;
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{2}, scq::cart_count{3}, scq::cart_capacity{2}};
+
+    // count number of enqueues
+    atomic_count enqueue_count{};
+
+    // expected set contains all (expected) results; after the test which set should be empty (each matching result will
+    // be crossed out)
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
+    {
+        {0, value_type{100}},
+        {0, value_type{101}}, // full-cart 1
+        {0, value_type{102}},
+        {0, value_type{103}}, // full-cart 2
+        {1, value_type{200}} // half-filled cart 1
+    };
+
+    // initialise 6 producing threads
+    std::vector<std::thread> enqueue_threads(6);
+    std::generate(enqueue_threads.begin(), enqueue_threads.end(), [&]()
+    {
+        static size_t thread_id = 0;
+        return std::thread([thread_id = thread_id++, &queue, &enqueue_count]
+        {
+            switch (thread_id)
+            {
+                case 0:
+                    queue.enqueue(scq::slot_id{0}, value_type{100});
+                    break;
+                case 1:
+                    queue.enqueue(scq::slot_id{0}, value_type{101});
+                    break;
+                case 2:
+                    queue.enqueue(scq::slot_id{1}, value_type{200});
+                    break;
+                case 3:
+                    queue.enqueue(scq::slot_id{0}, value_type{103});
+                    break;
+                case 4:
+                    queue.enqueue(scq::slot_id{0}, value_type{102});
+                    break;
+            }
+
+            // only first 5 threads actually insert into queue, but 6 threads arrive at the barrier
+            ++enqueue_count;
+
+            // barrier: wait until queue was closed (>= 7 means queue was closed)
+            enqueue_count.wait_at_least(7);
+
+            // queue should already be closed
+            EXPECT_THROW(queue.enqueue(scq::slot_id{0}, value_type{0}), std::overflow_error);
+        });
+    });
+
+    std::atomic_size_t half_filled_cart_count{};
+    std::atomic_size_t full_cart_count{};
+
+    // initialise 5 consuming threads
+    std::vector<std::thread> dequeue_threads(5);
+    std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
+    {
+        return std::thread([&queue, &expected, &half_filled_cart_count, &full_cart_count]
+        {
+            while (true)
+            {
+                // should be blocking if queue was not yet closed
+                scq::cart<value_type> cart = queue.dequeue();
+
+                // abort if queue was closed
+                if (!cart.valid())
+                {
+                    EXPECT_FALSE(cart.valid());
+                    EXPECT_THROW(cart.get(), std::future_error);
+                    break;
+                }
+
+                EXPECT_TRUE(cart.valid());
+
+                std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
+
+                EXPECT_GE(cart_data.second.size(), 1u);
+                EXPECT_LE(cart_data.second.size(), 2u);
+
+                half_filled_cart_count += cart_data.second.size() == 1;
+                full_cart_count += cart_data.second.size() == 2;
+
+                for (auto && value: cart_data.second)
+                {
+                    EXPECT_TRUE(expected.cross_off({cart_data.first.slot_id, value}));
+                }
+            }
+        });
+    });
+
+    // barrier: wait until all elements are added
+    enqueue_count.wait_at_least(6);
+
+    // close after all producer threads are finished
+    queue.close();
+
+    ++enqueue_count; // signal that queue is closed
+
+    for (auto && enqueue_thread: enqueue_threads)
+        enqueue_thread.join();
+
+    for (auto && dequeue_thread: dequeue_threads)
+        dequeue_thread.join();
+
+    EXPECT_EQ(half_filled_cart_count, 1);
+    EXPECT_EQ(full_cart_count, 2);
+
+    // all results seen
+    EXPECT_TRUE(expected.empty());
+}

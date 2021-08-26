@@ -332,3 +332,68 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     EXPECT_TRUE(expected.empty());
 }
 
+TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_after_close_process_mixed_full_and_half_filled_carts)
+{
+    using value_type = int;
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    // expected set contains all (expected) results; after the test which set should be empty (each matching result will
+    // be crossed out)
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
+    {
+        {0, value_type{0}},
+        {1, value_type{100}},
+        {1, value_type{101}},
+        {1, value_type{102}},
+        {1, value_type{103}},
+        {1, value_type{104}},
+        {2, value_type{200}},
+        {2, value_type{201}},
+        {3, value_type{300}},
+        {4, value_type{400}}
+    };
+
+    queue.enqueue(scq::slot_id{0}, value_type{0}); // half-filled cart
+    queue.enqueue(scq::slot_id{1}, value_type{100});
+    queue.enqueue(scq::slot_id{1}, value_type{101}); // full-cart 1
+    queue.enqueue(scq::slot_id{1}, value_type{102});
+    queue.enqueue(scq::slot_id{1}, value_type{103}); // full-cart 2
+    queue.enqueue(scq::slot_id{1}, value_type{104}); // half-filled cart
+    queue.enqueue(scq::slot_id{2}, value_type{200});
+    queue.enqueue(scq::slot_id{2}, value_type{201}); // full-cart 3
+    queue.enqueue(scq::slot_id{3}, value_type{300}); // half-filled cart
+    queue.enqueue(scq::slot_id{4}, value_type{400}); // half-filled cart
+
+    queue.close();
+
+    size_t full_cart_count{};
+    size_t half_filled_cart_count{};
+
+    // process full and half-filled carts
+    for (int i = 0; i < 6 / 2 + 4; ++i)
+    {
+        // close allows to dequeue remaining elements
+        scq::cart<value_type> cart = queue.dequeue();
+        EXPECT_TRUE(cart.valid());
+        std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
+
+        EXPECT_GE(cart_data.second.size(), 1u);
+        EXPECT_LE(cart_data.second.size(), 2u);
+
+        half_filled_cart_count += cart_data.second.size() == 1;
+        full_cart_count += cart_data.second.size() == 2;
+
+        for (auto && value: cart_data.second)
+        {
+            EXPECT_TRUE(expected.cross_off({cart_data.first.slot_id, value}));
+        }
+    }
+
+    EXPECT_EQ(half_filled_cart_count, 4);
+    EXPECT_EQ(full_cart_count, 3);
+
+    // all results seen
+    EXPECT_TRUE(expected.empty());
+}
+

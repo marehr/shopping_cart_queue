@@ -113,16 +113,10 @@ public:
 
             if (!queue_was_closed)
             {
-                std::vector<value_type> & slot_cart = _to_fill_carts[slot.slot_id];
-                assert(slot_cart.size() < _cart_capacity);
+                add_value_to_slot_cart(slot, std::move(value));
 
-                slot_cart.emplace_back(std::move(value));
-
-                if (slot_cart.size() >= _cart_capacity)
-                {
-                    _cart_memory.emplace_back(slot, std::move(slot_cart));
-                    slot_cart = {}; // reset slotted cart
-                }
+                if (slot_cart_is_full(slot))
+                    move_slot_cart_into_full_cart_queue(slot);
             }
         }
 
@@ -135,7 +129,6 @@ public:
 
     cart_type dequeue()
     {
-        cart_type cart{};
         _cart_type _tmp_cart{};
 
         bool queue_was_full{};
@@ -155,8 +148,7 @@ public:
 
             if (!queue_was_empty)
             {
-                _tmp_cart = std::move(_cart_memory.back());
-                _cart_memory.pop_back();
+                _tmp_cart = dequeue_slot_cart_from_full_cart_queue();
             }
         }
 
@@ -170,12 +162,7 @@ public:
         // NOTE: this also handles queue_was_empty; if queue_was_empty we return a no_state cart
         // this has a asymmetric behaviour from enqueue as we assume multiple "polling" (dequeue) threads. The queue
         // should be closed after all the data was pushed.
-
-        cart._id = _tmp_cart.first;
-        cart._cart_span = std::move(_tmp_cart.second); // TODO: memory should be owned by the queue not the cart
-        cart._valid = !queue_was_empty;
-
-        return cart;
+        return create_cart_future(_tmp_cart, queue_was_empty);
     }
 
     void close()
@@ -192,13 +179,8 @@ public:
             for (size_t slot_id = 0u; slot_id < _to_fill_carts.size(); ++slot_id)
             {
                 scq::slot_id slot{slot_id};
-                auto & slot_cart = _to_fill_carts[slot.slot_id];
-
-                if (slot_cart.size() > 0)
-                {
-                    _cart_memory.emplace_back(slot, std::move(slot_cart));
-                    slot_cart = {}; // reset slotted cart
-                }
+                if (slot_cart_is_non_empty(slot))
+                    move_slot_cart_into_full_cart_queue(slot);
             }
         }
 
@@ -212,6 +194,54 @@ private:
     std::size_t _cart_capacity{};
 
     using _cart_type = std::pair<slot_id, std::vector<value_type>>;
+
+    cart_type create_cart_future(_cart_type tmp_cart, bool queue_was_empty)
+    {
+        cart_type cart{};
+        cart._id = tmp_cart.first;
+        cart._cart_span = std::move(tmp_cart.second); // TODO: memory should be owned by the queue not the cart
+        cart._valid = !queue_was_empty;
+        return cart;
+    }
+
+    void add_value_to_slot_cart(scq::slot_id slot, value_type value)
+    {
+        std::vector<value_type> & slot_cart = _to_fill_carts[slot.slot_id];
+
+        assert(slot_cart.size() < _cart_capacity);
+
+        slot_cart.emplace_back(std::move(value));
+    }
+
+    _cart_type dequeue_slot_cart_from_full_cart_queue()
+    {
+        _cart_type tmp = std::move(_cart_memory.back());
+        _cart_memory.pop_back();
+        return tmp;
+    }
+
+    bool slot_cart_is_non_empty(scq::slot_id slot)
+    {
+        auto & slot_cart = _to_fill_carts[slot.slot_id];
+        return slot_cart.size() > 0;
+    }
+
+    bool slot_cart_is_full(scq::slot_id slot)
+    {
+        auto & slot_cart = _to_fill_carts[slot.slot_id];
+        return slot_cart.size() >= _cart_capacity;
+    }
+
+    void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
+    {
+        auto & slot_cart = _to_fill_carts[slot.slot_id];
+
+        assert(slot_cart.size() > 0); // at least one element
+        assert(slot_cart.size() <= _cart_capacity); // at most cart capacity many elements
+
+        _cart_memory.emplace_back(slot, std::move(slot_cart));
+        slot_cart = {}; // reset slotted cart
+    }
 
     bool _queue_closed{false};
     std::vector<_cart_type> _cart_memory{};

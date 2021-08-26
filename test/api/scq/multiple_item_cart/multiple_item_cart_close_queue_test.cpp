@@ -289,3 +289,46 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     EXPECT_TRUE(expected.empty());
 }
 
+TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_after_close_process_half_filled_carts)
+{
+    using value_type = int;
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{5}, scq::cart_count{5}, scq::cart_capacity{2}};
+
+    // expected set contains all (expected) results; after the test which set should be empty (each matching result will
+    // be crossed out)
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
+    {
+        {0, value_type{0}},
+        {1, value_type{104}},
+        {3, value_type{300}},
+        {4, value_type{400}}
+    };
+
+    queue.enqueue(scq::slot_id{0}, value_type{0}); // half-filled cart
+    queue.enqueue(scq::slot_id{1}, value_type{104}); // half-filled cart
+    queue.enqueue(scq::slot_id{3}, value_type{300}); // half-filled cart
+    queue.enqueue(scq::slot_id{4}, value_type{400}); // half-filled cart
+
+    queue.close();
+
+    // process half-filled carts
+    for (int i = 0; i < 4; ++i)
+    {
+        // close allows to dequeue remaining elements
+        scq::cart<value_type> cart = queue.dequeue();
+        EXPECT_TRUE(cart.valid());
+        std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
+
+        EXPECT_EQ(cart_data.second.size(), 1u);
+
+        for (auto && value: cart_data.second)
+        {
+            EXPECT_TRUE(expected.cross_off({cart_data.first.slot_id, value}));
+        }
+    }
+
+    // all results seen
+    EXPECT_TRUE(expected.empty());
+}
+

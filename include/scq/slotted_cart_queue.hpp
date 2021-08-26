@@ -184,6 +184,22 @@ public:
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
             _queue_closed = true;
+
+            // TODO: if pending slots are more than queue capacity? is that a problem?
+
+            // put all non-full carts into full queue (no element can't be added any more and all pending elements =
+            // active to fill elements must be processed)
+            for (size_t slot_id = 0u; slot_id < _to_fill_carts.size(); ++slot_id)
+            {
+                scq::slot_id slot{slot_id};
+                auto & slot_cart = _to_fill_carts[slot.slot_id];
+
+                if (slot_cart.size() > 0)
+                {
+                    _cart_memory.emplace_back(slot, std::move(slot_cart));
+                    slot_cart = {}; // reset slotted cart
+                }
+            }
         }
 
         _queue_empty_or_closed_cv.notify_all();

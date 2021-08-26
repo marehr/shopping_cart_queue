@@ -17,7 +17,6 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_single_consumer_all_
 {
     using value_type = int;
 
-    // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
     scq::slotted_cart_queue<value_type> queue{scq::slot_count{3}, scq::cart_count{3}, scq::cart_capacity{2}};
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
@@ -113,7 +112,6 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_single_consumer_mixe
 {
     using value_type = int;
 
-    // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
     scq::slotted_cart_queue<value_type> queue{scq::slot_count{3}, scq::cart_count{3}, scq::cart_capacity{2}};
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
@@ -216,7 +214,6 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_al
 {
     using value_type = int;
 
-    // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
     scq::slotted_cart_queue<value_type> queue{scq::slot_count{3}, scq::cart_count{3}, scq::cart_capacity{2}};
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will
@@ -312,7 +309,6 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_mi
 {
     using value_type = int;
 
-    // this slotted_cart_queue should behave like a normal queue, but with nondeterministic results
     scq::slotted_cart_queue<value_type> queue{scq::slot_count{3}, scq::cart_count{3}, scq::cart_capacity{2}};
 
     // expected set contains all (expected) results; after the test which set should be empty (each matching result will

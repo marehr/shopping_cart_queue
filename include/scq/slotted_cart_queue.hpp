@@ -124,12 +124,8 @@ public:
 
             if (!queue_was_closed && slot_cart.empty())
             {
-                _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this, &slot_cart, slot]
+                _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this, &slot_cart]
                 {
-                    // we need to refresh the cart in the current slot after wake-up, because it could have changed
-                    // since the last invocation
-                    slot_cart = _cart_slots.slot(slot);
-
                     // wait until either an empty cart is ready, or the slot has a cart, or the queue was closed
                     return !_empty_carts_queue.empty() || !slot_cart.empty() || _queue_closed == true;
                 });
@@ -421,7 +417,6 @@ template <typename value_t>
 struct slotted_cart_queue<value_t>::full_carts_queue_t
 {
     using full_cart_type = std::pair<slot_id, std::span<value_t>>;
-    using full_cart_type2 = std::pair<slot_id, std::vector<value_t>>;
     using slot_cart_type = typename cart_slots_t::slot_cart_t;
 
     full_carts_queue_t() = default;

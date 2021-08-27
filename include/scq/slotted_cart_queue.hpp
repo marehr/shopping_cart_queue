@@ -303,7 +303,8 @@ public:
                 if (slot_cart.full())
                 {
                     full_queue_was_empty = _full_carts_queue.empty();
-                    move_slot_cart_into_full_cart_queue(slot);
+                    _full_carts_queue.enqueue(slot_cart);
+                    assert_cart_count_variant();
                 }
             }
         }
@@ -357,7 +358,7 @@ public:
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
             _queue_closed = true;
-            move_non_empty_slot_carts_into_full_cart_queue();
+            close_cart_slots_and_put_them_into_full_carts_queue();
         }
 
         _empty_cart_queue_empty_or_closed_cv.notify_all();
@@ -396,17 +397,20 @@ private:
             _empty_cart_queue_empty_or_closed_cv.notify_all();
     }
 
-    void move_non_empty_slot_carts_into_full_cart_queue()
+    void close_cart_slots_and_put_them_into_full_carts_queue()
     {
         // TODO: if pending slots are more than queue capacity? is that a problem?
 
-        // put all non-full carts into full queue (no element can't be added any more and all pending elements =
-        // active to fill elements must be processed)
+        // put all non-empty / non-full carts into full queue (no element can't be added any more and all pending
+        // elements = active to fill elements must be processed)
         for (size_t slot_id = 0u; slot_id < _cart_slots.size(); ++slot_id)
         {
-            auto cart_slot = _cart_slots.slot(scq::slot_id{slot_id});
-            if (!cart_slot.empty())
-                move_slot_cart_into_full_cart_queue(scq::slot_id{slot_id});
+            auto slot_cart = _cart_slots.slot(scq::slot_id{slot_id});
+            if (!slot_cart.empty())
+            {
+                _full_carts_queue.enqueue(slot_cart);
+                assert_cart_count_variant();
+            }
         }
     }
 
@@ -418,13 +422,6 @@ private:
         cart._valid = !queue_was_empty;
         cart._cart_queue = this;
         return cart;
-    }
-
-    void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
-    {
-        auto slot_cart = _cart_slots.slot(slot);
-        _full_carts_queue.enqueue(slot_cart);
-        assert_cart_count_variant();
     }
 
     bool _queue_closed{false};

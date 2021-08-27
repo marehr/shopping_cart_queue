@@ -151,19 +151,19 @@ public:
 
             queue_was_closed = _queue_closed;
 
-            if (!queue_was_closed && slot_cart_is_empty(slot))
+            if (!queue_was_closed && _cart_slots2.slot(slot).empty())
             {
                 _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this, slot]
                 {
                     // wait until either an empty cart is ready, or the slot has a cart, or the queue was closed
-                    return !empty_slot_cart_queue_is_empty() || !slot_cart_is_empty(slot) || _queue_closed == true;
+                    return !empty_slot_cart_queue_is_empty() || !_cart_slots2.slot(slot).empty() || _queue_closed == true;
                 });
 
                 queue_was_closed = _queue_closed;
 
                 // if the current slot still has no cart and we have an available empty cart, use that empty cart in
                 // this slot
-                if (!queue_was_closed && slot_cart_is_empty(slot) && !empty_slot_cart_queue_is_empty())
+                if (!queue_was_closed && _cart_slots2.slot(slot).empty() && !empty_slot_cart_queue_is_empty())
                 {
                     --_empty_cart_count;
                     assert_cart_count_variant();
@@ -172,9 +172,9 @@ public:
 
             if (!queue_was_closed)
             {
-                add_value_to_slot_cart(slot, std::move(value));
+                _cart_slots2.slot(slot).emplace_back(std::move(value));
 
-                if (slot_cart_is_full(slot))
+                if (_cart_slots2.slot(slot).full())
                 {
                     full_queue_was_empty = full_slot_cart_queue_is_empty();
                     move_slot_cart_into_full_cart_queue(slot);
@@ -295,7 +295,7 @@ private:
         for (size_t slot_id = 0u; slot_id < _cart_slots.size(); ++slot_id)
         {
             scq::slot_id slot{slot_id};
-            if (!slot_cart_is_empty(slot))
+            if (!_cart_slots2.slot(slot).empty())
                 move_slot_cart_into_full_cart_queue(slot);
         }
     }
@@ -308,11 +308,6 @@ private:
         cart._valid = !queue_was_empty;
         cart._cart_queue = this;
         return cart;
-    }
-
-    void add_value_to_slot_cart(scq::slot_id slot, value_type value)
-    {
-        _cart_slots2.slot(slot).emplace_back(value);
     }
 
     _cart_type dequeue_slot_cart_from_full_cart_queue()
@@ -333,16 +328,6 @@ private:
     bool full_slot_cart_queue_is_empty()
     {
         return _full_cart_count == 0u;
-    }
-
-    bool slot_cart_is_empty(scq::slot_id slot)
-    {
-        return _cart_slots2.slot(slot).empty();
-    }
-
-    bool slot_cart_is_full(scq::slot_id slot)
-    {
-        return _cart_slots2.slot(slot).full();
     }
 
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)

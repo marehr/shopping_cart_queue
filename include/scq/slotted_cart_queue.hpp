@@ -391,7 +391,9 @@ struct slotted_cart_queue<value_t>::full_carts_queue_t
     full_carts_queue_t(cart_count cart_count) :
         _count{0},
         _cart_count{cart_count.cart_count}
-    {}
+    {
+        _internal_queue.reserve(_cart_count);
+    }
 
     bool empty()
     {

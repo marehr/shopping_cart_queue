@@ -96,6 +96,11 @@ class slotted_cart_queue
             _internal_slot_cart_type * _internal_slot_cart_ptr;
             size_t _cart_capacity;
 
+            scq::slot_id slot_id()
+            {
+                return _slot_id;
+            }
+
             size_t size()
             {
                 return _internal_slot_cart_ptr->size();
@@ -192,9 +197,16 @@ class slotted_cart_queue
             return _count == 0;
         }
 
-        void enqueue()
+        void enqueue(typename cart_slots_t::slot_cart_t & slot_cart)
         {
             ++_count;
+
+            assert(slot_cart.size() > 0); // at least one element
+            assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
+
+            auto & internal_slot_cart = *slot_cart._internal_slot_cart_ptr;
+            _internal_queue.emplace_back(slot_cart.slot_id(), std::move(internal_slot_cart));
+            internal_slot_cart = {}; // reset slotted cart
         }
 
         full_cart_type dequeue()
@@ -411,16 +423,8 @@ private:
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
     {
         auto slot_cart = _cart_slots.slot(slot);
-
-        assert(slot_cart.size() > 0); // at least one element
-        assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
-
-        _full_carts_queue.enqueue();
+        _full_carts_queue.enqueue(slot_cart);
         assert_cart_count_variant();
-
-        auto & internal_slot_cart = *slot_cart._internal_slot_cart_ptr;
-        _full_carts_queue._internal_queue.emplace_back(slot, std::move(internal_slot_cart));
-        internal_slot_cart = {}; // reset slotted cart
     }
 
     bool _queue_closed{false};

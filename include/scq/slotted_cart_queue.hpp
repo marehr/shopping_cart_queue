@@ -151,6 +151,16 @@ class slotted_cart_queue
             return _count == 0;
         }
 
+        void enqueue()
+        {
+            ++_count;
+        }
+
+        void dequeue()
+        {
+            --_count;
+        }
+
         void _check_invariant()
         {
             assert(0 <= _count);
@@ -222,7 +232,7 @@ public:
                     // this assert must be true because of the condition within _empty_cart_queue_empty_or_closed_cv
                     assert(!_empty_carts_queue.empty());
 
-                    --_empty_carts_queue._count;
+                    _empty_carts_queue.dequeue(); // TODO, we need to do something with returned empty_cart
                     assert_cart_count_variant();
                 }
             }
@@ -328,7 +338,7 @@ private:
 
             empty_queue_was_empty = _empty_carts_queue.empty();
 
-            ++_empty_carts_queue._count;
+            _empty_carts_queue.enqueue(); // TODO add empty cart to queue
             assert_cart_count_variant();
         }
 

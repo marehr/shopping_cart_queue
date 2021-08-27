@@ -304,12 +304,13 @@ struct slotted_cart_queue<value_t>::cart_slots_t
 
     struct slot_cart_t
     {
-        scq::slot_id _slot_id;
-        cart_slots_t * _cart_slots;
+        size_t _slot_id;
+        size_t _cart_capacity;
+        std::span<value_t> * _memory_region_ptr;
 
         scq::slot_id slot_id()
         {
-            return _slot_id;
+            return {_slot_id};
         }
 
         size_t size()
@@ -319,7 +320,7 @@ struct slotted_cart_queue<value_t>::cart_slots_t
 
         size_t capacity()
         {
-            return _cart_slots->_cart_capacity;
+            return _cart_capacity;
         }
 
         bool empty()
@@ -335,25 +336,29 @@ struct slotted_cart_queue<value_t>::cart_slots_t
         void emplace_back(value_t value)
         {
             assert(size() < capacity());
-            std::span<value_t> & _memory_region = memory_region();
-            _memory_region = std::span<value_t>(_memory_region.data(), size() + 1u);
+            std::span<value_t> _memory_region = memory_region();
+            _memory_region = std::span<value_t>(_memory_region.data(), _memory_region.size() + 1u);
             _memory_region.back() = std::move(value);
+            set_memory_region(_memory_region);
         }
 
-        void set_memory_region(std::span<value_t> memory_region_span) // TODO don't reset
+        void set_memory_region(std::span<value_t> memory_region_span)
         {
-            memory_region() = std::span<value_t>{memory_region_span.data(), 0u};
+            assert(_memory_region_ptr != nullptr);
+            *_memory_region_ptr = std::span<value_t>{memory_region_span};
         }
 
-        std::span<value_t> & memory_region() // TODO return by value
+        std::span<value_t> memory_region()
         {
-            return _cart_slots->_internal_cart_slots[_slot_id.slot_id];
+            assert(_memory_region_ptr != nullptr);
+            return *_memory_region_ptr;
         }
     };
 
     slot_cart_t slot(scq::slot_id slot_id)
     {
-        return {slot_id, this};
+        std::span<value_t> & memory_region = _internal_cart_slots[slot_id.slot_id];
+        return {slot_id.slot_id, _cart_capacity, &memory_region};
     }
 
     void move_active_carts_into_full_carts_queue(full_carts_queue_t & full_carts_queue)

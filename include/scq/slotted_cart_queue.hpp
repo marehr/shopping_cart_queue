@@ -5,6 +5,7 @@
 #include <cstddef> // std::size_t
 #include <future> // future_error
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <thread>
@@ -112,8 +113,12 @@ public:
 
     void enqueue(slot_id slot, value_type value)
     {
+        using full_cart_type = typename full_carts_queue_t::full_cart_type;
+
         bool full_queue_was_empty{};
         bool queue_was_closed{};
+
+        std::optional<full_cart_type> full_cart{};
 
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
@@ -151,14 +156,20 @@ public:
 
                 if (slot_cart.full())
                 {
-                    full_queue_was_empty = _full_carts_queue.empty();
-                    auto full_cart = _full_carts_queue.move_slot_cart_to_full_cart(slot_cart);
-
-                    // enqueue later
-                    _full_carts_queue.enqueue(std::move(full_cart));
-                    assert_cart_count_variant();
+                    full_cart = full_carts_queue_t::move_slot_cart_to_full_cart(slot_cart);
                 }
             }
+        }
+
+        if (full_cart.has_value())
+        {
+            std::unique_lock<std::mutex> full_cart_queue_lock(_full_cart_queue_mutex);
+
+            full_queue_was_empty = _full_carts_queue.empty();
+
+            // enqueue later
+            _full_carts_queue.enqueue(std::move(*full_cart));
+            assert_cart_count_variant();
         }
 
         if (full_queue_was_empty)
@@ -173,9 +184,9 @@ public:
         cart_future_type cart_future{};
 
         {
-            std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
+            std::unique_lock<std::mutex> full_cart_queue_lock(_full_cart_queue_mutex);
 
-            _full_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this]
+            _full_cart_queue_empty_or_closed_cv.wait(full_cart_queue_lock, [this]
             {
                 // wait until first cart is full
                 return !_full_carts_queue.empty() || _queue_closed == true;
@@ -198,7 +209,8 @@ public:
     void close()
     {
         {
-            std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
+            // this locks the whole queue
+            std::scoped_lock lock(_cart_management_mutex, _full_cart_queue_mutex);
 
             _queue_closed = true;
             _cart_slots.move_active_carts_into_full_carts_queue(_full_carts_queue);
@@ -242,12 +254,13 @@ private:
             _empty_cart_queue_empty_or_closed_cv.notify_all();
     }
 
-    bool _queue_closed{false};
+    std::atomic_bool _queue_closed{false};
 
     cart_slots_t _cart_slots{scq::slot_count{_slot_count}, scq::cart_capacity{_cart_capacity}};
 
     std::mutex _cart_management_mutex;
     std::condition_variable _empty_cart_queue_empty_or_closed_cv;
+    std::mutex _full_cart_queue_mutex;
     std::condition_variable _full_cart_queue_empty_or_closed_cv;
 };
 
@@ -351,7 +364,7 @@ struct slotted_cart_queue<value_t>::cart_slots_t
             auto slot_cart = slot(scq::slot_id{slot_id});
             if (!slot_cart.empty())
             {
-                auto full_cart = full_carts_queue.move_slot_cart_to_full_cart(slot_cart);
+                auto full_cart = full_carts_queue_t::move_slot_cart_to_full_cart(slot_cart);
                 full_carts_queue.enqueue(full_cart);
                 full_carts_queue._check_invariant();
             }

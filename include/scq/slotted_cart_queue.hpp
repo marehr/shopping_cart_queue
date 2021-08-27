@@ -284,27 +284,27 @@ struct slotted_cart_queue<value_t>::cart_slots_t
         size_t _cart_capacity;
         std::span<value_t> * _memory_region_ptr;
 
-        scq::slot_id slot_id()
+        scq::slot_id slot_id() const
         {
             return {_slot_id};
         }
 
-        size_t size()
+        size_t size() const
         {
             return memory_region().size();
         }
 
-        size_t capacity()
+        size_t capacity() const
         {
             return _cart_capacity;
         }
 
-        bool empty()
+        bool empty() const
         {
             return memory_region().empty();
         }
 
-        bool full()
+        bool full() const
         {
             return size() >= capacity();
         }
@@ -324,7 +324,7 @@ struct slotted_cart_queue<value_t>::cart_slots_t
             *_memory_region_ptr = std::span<value_t>{memory_region_span};
         }
 
-        std::span<value_t> memory_region()
+        std::span<value_t> memory_region() const
         {
             assert(_memory_region_ptr != nullptr);
             return *_memory_region_ptr;
@@ -432,15 +432,19 @@ struct slotted_cart_queue<value_t>::full_carts_queue_t
         return _count == 0;
     }
 
+    static full_cart_type convert_slot_cart(slot_cart_type const & slot_cart)
+    {
+        assert(slot_cart.size() > 0); // at least one element
+        assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
+
+        return full_cart_type{slot_cart.slot_id(), slot_cart.memory_region()};
+    }
+
     void enqueue(slot_cart_type & slot_cart)
     {
         ++_count;
 
-        assert(slot_cart.size() > 0); // at least one element
-        assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
-
-        std::span<value_t> memory_region = slot_cart.memory_region();
-        _internal_queue.emplace_back(slot_cart.slot_id(), std::move(memory_region));
+        _internal_queue.push_back(convert_slot_cart(slot_cart));
         slot_cart.set_memory_region(std::span<value_t>{}); // reset slot
     }
 

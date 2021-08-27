@@ -96,7 +96,7 @@ public:
           _cart_capacity{cart_capacity.cart_capacity},
           _empty_cart_count{static_cast<std::ptrdiff_t>(_cart_count)},
           _full_cart_count{0},
-          _to_fill_carts(slots.slot_count) // default init slot_count many vectors
+          _cart_slots(slots.slot_count) // default init slot_count many vectors
     {
         if (_cart_count < _slot_count)
             throw std::logic_error{"The number of carts must be >= the number of slots."};
@@ -256,7 +256,7 @@ private:
 
         // put all non-full carts into full queue (no element can't be added any more and all pending elements =
         // active to fill elements must be processed)
-        for (size_t slot_id = 0u; slot_id < _to_fill_carts.size(); ++slot_id)
+        for (size_t slot_id = 0u; slot_id < _cart_slots.size(); ++slot_id)
         {
             scq::slot_id slot{slot_id};
             if (!slot_cart_is_empty(slot))
@@ -276,7 +276,7 @@ private:
 
     void add_value_to_slot_cart(scq::slot_id slot, value_type value)
     {
-        std::vector<value_type> & slot_cart = _to_fill_carts[slot.slot_id];
+        std::vector<value_type> & slot_cart = _cart_slots[slot.slot_id];
 
         assert(slot_cart.size() < _cart_capacity);
 
@@ -288,8 +288,8 @@ private:
         --_full_cart_count;
         assert_cart_count_variant();
 
-        _cart_type tmp = std::move(_cart_memory.back());
-        _cart_memory.pop_back();
+        _cart_type tmp = std::move(_full_cart_queue.back());
+        _full_cart_queue.pop_back();
         return tmp;
     }
 
@@ -305,19 +305,19 @@ private:
 
     bool slot_cart_is_empty(scq::slot_id slot)
     {
-        auto & slot_cart = _to_fill_carts[slot.slot_id];
+        auto & slot_cart = _cart_slots[slot.slot_id];
         return slot_cart.empty();
     }
 
     bool slot_cart_is_full(scq::slot_id slot)
     {
-        auto & slot_cart = _to_fill_carts[slot.slot_id];
+        auto & slot_cart = _cart_slots[slot.slot_id];
         return slot_cart.size() >= _cart_capacity;
     }
 
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
     {
-        auto & slot_cart = _to_fill_carts[slot.slot_id];
+        auto & slot_cart = _cart_slots[slot.slot_id];
 
         assert(slot_cart.size() > 0); // at least one element
         assert(slot_cart.size() <= _cart_capacity); // at most cart capacity many elements
@@ -325,14 +325,14 @@ private:
         ++_full_cart_count;
         assert_cart_count_variant();
 
-        _cart_memory.emplace_back(slot, std::move(slot_cart));
+        _full_cart_queue.emplace_back(slot, std::move(slot_cart));
         slot_cart = {}; // reset slotted cart
     }
 
     bool _queue_closed{false};
-    std::vector<_cart_type> _cart_memory{};
+    std::vector<_cart_type> _full_cart_queue{};
 
-    std::vector<std::vector<value_type>> _to_fill_carts{}; // position is slot_id
+    std::vector<std::vector<value_type>> _cart_slots{}; // position is slot_id
 
     std::mutex _cart_management_mutex;
     std::condition_variable _empty_cart_queue_empty_or_closed_cv;

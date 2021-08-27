@@ -152,7 +152,10 @@ public:
                 if (slot_cart.full())
                 {
                     full_queue_was_empty = _full_carts_queue.empty();
-                    _full_carts_queue.enqueue(slot_cart);
+                    auto full_cart = _full_carts_queue.move_slot_cart_to_full_cart(slot_cart);
+
+                    // enqueue later
+                    _full_carts_queue.enqueue(std::move(full_cart));
                     assert_cart_count_variant();
                 }
             }
@@ -348,7 +351,8 @@ struct slotted_cart_queue<value_t>::cart_slots_t
             auto slot_cart = slot(scq::slot_id{slot_id});
             if (!slot_cart.empty())
             {
-                full_carts_queue.enqueue(slot_cart);
+                auto full_cart = full_carts_queue.move_slot_cart_to_full_cart(slot_cart);
+                full_carts_queue.enqueue(full_cart);
                 full_carts_queue._check_invariant();
             }
         }
@@ -432,20 +436,21 @@ struct slotted_cart_queue<value_t>::full_carts_queue_t
         return _count == 0;
     }
 
-    static full_cart_type convert_slot_cart(slot_cart_type const & slot_cart)
+    static full_cart_type move_slot_cart_to_full_cart(slot_cart_type & slot_cart)
     {
         assert(slot_cart.size() > 0); // at least one element
         assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
 
-        return full_cart_type{slot_cart.slot_id(), slot_cart.memory_region()};
+        full_cart_type full_cart{slot_cart.slot_id(), slot_cart.memory_region()};
+        slot_cart.set_memory_region(std::span<value_t>{}); // reset slot
+        return full_cart;
     }
 
-    void enqueue(slot_cart_type & slot_cart)
+    void enqueue(full_cart_type full_cart)
     {
         ++_count;
 
-        _internal_queue.push_back(convert_slot_cart(slot_cart));
-        slot_cart.set_memory_region(std::span<value_t>{}); // reset slot
+        _internal_queue.push_back(full_cart);
     }
 
     full_cart_type dequeue()

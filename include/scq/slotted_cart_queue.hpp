@@ -80,6 +80,11 @@ private:
 template <typename value_t>
 class slotted_cart_queue
 {
+    struct cart_id
+    {
+        std::size_t cart_id;
+    };
+    struct queue_memory_t;
     struct cart_slots_t;
     struct empty_carts_queue_t;
     struct full_carts_queue_t;
@@ -140,6 +145,8 @@ public:
                     assert(!_empty_carts_queue.empty());
 
                     _empty_carts_queue.dequeue(); // TODO, we need to do something with returned empty_cart
+                    cart_id cart = _queue_memory.allocate();
+                    slot_cart.set_memory_region(_queue_memory.memory_region(cart));
                     assert_cart_count_variant();
                 }
             }
@@ -152,6 +159,7 @@ public:
                 {
                     full_queue_was_empty = _full_carts_queue.empty();
                     _full_carts_queue.enqueue(slot_cart);
+                    _queue_memory.deallocate(slot_cart); // TODO remove me
                     assert_cart_count_variant();
                 }
             }
@@ -221,6 +229,7 @@ private:
 
     empty_carts_queue_t _empty_carts_queue{scq::cart_count{_cart_count}};
     full_carts_queue_t _full_carts_queue{scq::cart_count{_cart_count}};
+    queue_memory_t _queue_memory{scq::cart_count{_cart_count}, scq::cart_capacity{_cart_capacity}};
 
     friend cart_future_type;
 
@@ -266,10 +275,55 @@ private:
 };
 
 template <typename value_t>
+struct slotted_cart_queue<value_t>::queue_memory_t
+{
+    queue_memory_t() = default;
+    queue_memory_t(scq::cart_count cart_count, scq::cart_capacity cart_capacity) :
+        _cart_capacity{cart_capacity.cart_capacity},
+        _internal_queue_memory(cart_count.cart_count * cart_capacity.cart_capacity),
+        _internal_queue_memory_booked(cart_count.cart_count)
+    {}
+
+    std::span<value_t> memory_region(cart_id cart_id)
+    {
+        size_t size = _cart_capacity;
+        value_t * begin = _internal_queue_memory.data() + cart_id.cart_id * size;
+        return {begin, size};
+    }
+
+    cart_id allocate()
+    {
+        // TODO remove
+        for (size_t i = 0; i < _internal_queue_memory_booked.size(); ++i)
+        {
+            if (_internal_queue_memory_booked[i] == false)
+            {
+                _internal_queue_memory_booked[i] = true;
+                return cart_id{i};
+            }
+        }
+
+        throw std::runtime_error{"Allocation error: no empty cart available."};
+    }
+
+    void deallocate(typename cart_slots_t::slot_cart_t & slot_cart)
+    {
+        // TODO remove
+        std::ptrdiff_t start_offset = slot_cart.memory_region().data() - _internal_queue_memory.data();
+        cart_id cart{start_offset / _cart_capacity};
+
+        _internal_queue_memory_booked[cart.cart_id] = false;
+        slot_cart.memory_region() = std::span<value_t>{}; // reset data
+    }
+
+    std::size_t _cart_capacity{};
+    std::vector<value_t> _internal_queue_memory{};
+    std::vector<bool> _internal_queue_memory_booked{};
+};
+
+template <typename value_t>
 struct slotted_cart_queue<value_t>::cart_slots_t
 {
-    using _internal_slot_cart_type = std::vector<value_t>;
-
     cart_slots_t() = default;
     cart_slots_t(scq::slot_count slot_count, scq::cart_capacity cart_capacity) :
         _cart_capacity{cart_capacity.cart_capacity},
@@ -279,8 +333,7 @@ struct slotted_cart_queue<value_t>::cart_slots_t
     struct slot_cart_t
     {
         scq::slot_id _slot_id;
-        _internal_slot_cart_type * _internal_slot_cart_ptr;
-        size_t _cart_capacity;
+        cart_slots_t * _cart_slots;
 
         scq::slot_id slot_id()
         {
@@ -289,17 +342,17 @@ struct slotted_cart_queue<value_t>::cart_slots_t
 
         size_t size()
         {
-            return _internal_slot_cart_ptr->size();
+            return memory_region().size();
         }
 
         size_t capacity()
         {
-            return _cart_capacity;
+            return _cart_slots->_cart_capacity;
         }
 
         bool empty()
         {
-            return _internal_slot_cart_ptr->empty();
+            return memory_region().empty();
         }
 
         bool full()
@@ -310,14 +363,25 @@ struct slotted_cart_queue<value_t>::cart_slots_t
         void emplace_back(value_t value)
         {
             assert(size() < capacity());
-            _internal_slot_cart_ptr->emplace_back(std::move(value));
+            std::span<value_t> & _memory_region = memory_region();
+            _memory_region = std::span<value_t>(_memory_region.data(), size() + 1u);
+            _memory_region.back() = std::move(value);
+        }
+
+        void set_memory_region(std::span<value_t> memory_region_span)
+        {
+            memory_region() = std::span<value_t>{memory_region_span.data(), 0u};
+        }
+
+        std::span<value_t> & memory_region()
+        {
+            return _cart_slots->_internal_cart_slots[_slot_id.slot_id];
         }
     };
 
     slot_cart_t slot(scq::slot_id slot_id)
     {
-        _internal_slot_cart_type & slot_cart = _internal_cart_slots[slot_id.slot_id];
-        return {slot_id, &slot_cart, _cart_capacity};
+        return {slot_id, this};
     }
 
     void move_active_carts_into_full_carts_queue(full_carts_queue_t & full_carts_queue)
@@ -338,7 +402,7 @@ struct slotted_cart_queue<value_t>::cart_slots_t
     }
 
     size_t _cart_capacity{};
-    std::vector<_internal_slot_cart_type> _internal_cart_slots{}; // position is slot_id
+    std::vector<std::span<value_t>> _internal_cart_slots{}; // position is slot_id
 };
 
 template <typename value_t>
@@ -407,9 +471,9 @@ struct slotted_cart_queue<value_t>::full_carts_queue_t
         assert(slot_cart.size() > 0); // at least one element
         assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
 
-        auto & internal_slot_cart = *slot_cart._internal_slot_cart_ptr;
-        _internal_queue.emplace_back(slot_cart.slot_id(), std::move(internal_slot_cart));
-        internal_slot_cart = {}; // reset slotted cart
+        std::span<value_t> & memory_region = slot_cart.memory_region();
+        std::vector<value_t> memory(memory_region.begin(), memory_region.end()); // copy data into full queue
+        _internal_queue.emplace_back(slot_cart.slot_id(), std::move(memory));
     }
 
     full_cart_type dequeue()

@@ -137,6 +137,16 @@ class slotted_cart_queue
         std::vector<_internal_slot_cart_type> _internal_cart_slots{}; // position is slot_id
     };
 
+    struct empty_carts_queue_t
+    {
+        bool empty()
+        {
+            return _count == 0;
+        }
+
+        std::ptrdiff_t _count{};
+    };
+
 public:
     using value_type = value_t;
     using cart_future_type = cart<value_type>;
@@ -151,7 +161,7 @@ public:
         : _slot_count{slots.slot_count},
           _cart_count{carts.cart_count},
           _cart_capacity{cart_capacity.cart_capacity},
-          _empty_cart_count{static_cast<std::ptrdiff_t>(_cart_count)},
+          _empty_carts_queue{static_cast<std::ptrdiff_t>(_cart_count)},
           _full_cart_count{0},
           _cart_slots{slots, cart_capacity}
     {
@@ -195,7 +205,7 @@ public:
                     // this assert must be true because of the condition within _empty_cart_queue_empty_or_closed_cv
                     assert(!empty_slot_cart_queue_is_empty());
 
-                    --_empty_cart_count;
+                    --_empty_carts_queue._count;
                     assert_cart_count_variant();
                 }
             }
@@ -272,7 +282,8 @@ private:
     std::size_t _cart_count{};
     std::size_t _cart_capacity{};
 
-    std::ptrdiff_t _empty_cart_count{static_cast<std::ptrdiff_t>(_cart_count)}; // how many carts are empty <= _cart_count
+    empty_carts_queue_t _empty_carts_queue{static_cast<std::ptrdiff_t>(_cart_count)};
+
     std::ptrdiff_t _full_cart_count{}; // how many carts are full <= _cart_count
 
     using _internal_cart_type = std::pair<slot_id, std::vector<value_type>>;
@@ -281,17 +292,17 @@ private:
 
     void assert_cart_count_variant()
     {
-        assert(0 <= _empty_cart_count);
-        assert(_empty_cart_count <= _cart_count);
+        assert(0 <= _empty_carts_queue._count);
+        assert(_empty_carts_queue._count <= _cart_count);
 
         assert(0 <= _full_cart_count);
         assert(_full_cart_count <= _cart_count);
 
-        if (!(0 <= _empty_cart_count))
-            throw std::runtime_error{"_empty_cart_count: negative"};
+        if (!(0 <= _empty_carts_queue._count))
+            throw std::runtime_error{"_empty_carts_queue._count: negative"};
 
-        if (!(_empty_cart_count <= _cart_count))
-            throw std::runtime_error{std::string{"_empty_cart_count: FULL, _empty_cart_count: "} + std::to_string(_empty_cart_count) + " <= " + std::to_string(_cart_count)};
+        if (!(_empty_carts_queue._count <= _cart_count))
+            throw std::runtime_error{std::string{"_empty_carts_queue._count: FULL, _empty_carts_queue._count: "} + std::to_string(_empty_carts_queue._count) + " <= " + std::to_string(_cart_count)};
 
         if (!(0 <= _full_cart_count))
             throw std::runtime_error{"_full_cart_count: negative"};
@@ -308,7 +319,7 @@ private:
 
             empty_queue_was_empty = empty_slot_cart_queue_is_empty();
 
-            ++_empty_cart_count;
+            ++_empty_carts_queue._count;
             assert_cart_count_variant();
         }
 
@@ -352,7 +363,7 @@ private:
 
     bool empty_slot_cart_queue_is_empty()
     {
-        return _empty_cart_count == 0u;
+        return _empty_carts_queue.empty();
     }
 
     bool full_slot_cart_queue_is_empty()

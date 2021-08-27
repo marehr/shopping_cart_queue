@@ -171,9 +171,7 @@ public:
 
     cart_future_type dequeue()
     {
-        typename full_carts_queue_t::full_cart_type _tmp_full_cart{};
-
-        bool full_queue_was_empty{};
+        cart_future_type cart_future{};
 
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
@@ -184,25 +182,18 @@ public:
                 return !_full_carts_queue.empty() || _queue_closed == true;
             });
 
-            full_queue_was_empty = _full_carts_queue.empty();
-
-            if (!full_queue_was_empty)
+            if (!_full_carts_queue.empty())
             {
-                _tmp_full_cart = _full_carts_queue.dequeue();
+                auto full_cart = _full_carts_queue.dequeue();
+                cart_future._id = full_cart.first;
+                cart_future._cart_span = std::move(full_cart.second);
+                cart_future._cart_queue = this;
                 assert_cart_count_variant();
             }
         }
 
         // NOTE: cart memory will be released in notify_processed_cart after cart_future was destroyed
-
-        //
-        // prepare return data after critical section
-        //
-
-        // NOTE: this also handles full_queue_was_empty; if full_queue_was_empty we return a no_state cart
-        // this has a asymmetric behaviour from enqueue as we assume multiple "polling" (dequeue) threads. The queue
-        // should be closed after all the data was pushed.
-        return create_cart_future(_tmp_full_cart, full_queue_was_empty);
+        return cart_future;
     }
 
     void close()
@@ -250,15 +241,6 @@ private:
 
         if (empty_queue_was_empty)
             _empty_cart_queue_empty_or_closed_cv.notify_all();
-    }
-
-    cart_future_type create_cart_future(typename full_carts_queue_t::full_cart_type tmp_cart, bool queue_was_empty)
-    {
-        cart_future_type cart{};
-        cart._id = tmp_cart.first;
-        cart._cart_span = std::move(tmp_cart.second); // TODO: memory should be owned by the queue not the cart
-        cart._cart_queue = !queue_was_empty ? this : nullptr;
-        return cart;
     }
 
     bool _queue_closed{false};

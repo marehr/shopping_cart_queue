@@ -80,9 +80,9 @@ private:
 template <typename value_t>
 class slotted_cart_queue
 {
-    struct cart_id
+    struct cart_memory_id
     {
-        std::size_t cart_id;
+        std::size_t cart_memory_id;
     };
     struct queue_memory_t;
     struct cart_slots_t;
@@ -145,7 +145,7 @@ public:
                     assert(!_empty_carts_queue.empty());
 
                     _empty_carts_queue.dequeue(); // TODO, we need to do something with returned empty_cart
-                    cart_id cart = _queue_memory.allocate();
+                    cart_memory_id cart = _queue_memory.allocate();
                     slot_cart.set_memory_region(_queue_memory.memory_region(cart));
                     assert_cart_count_variant();
                 }
@@ -284,14 +284,14 @@ struct slotted_cart_queue<value_t>::queue_memory_t
         _internal_queue_memory_booked(cart_count.cart_count)
     {}
 
-    std::span<value_t> memory_region(cart_id cart_id)
+    std::span<value_t> memory_region(cart_memory_id cart_memory_id)
     {
         size_t size = _cart_capacity;
-        value_t * begin = _internal_queue_memory.data() + cart_id.cart_id * size;
+        value_t * begin = _internal_queue_memory.data() + cart_memory_id.cart_memory_id * size;
         return {begin, size};
     }
 
-    cart_id allocate()
+    cart_memory_id allocate()
     {
         // TODO remove
         for (size_t i = 0; i < _internal_queue_memory_booked.size(); ++i)
@@ -299,7 +299,7 @@ struct slotted_cart_queue<value_t>::queue_memory_t
             if (_internal_queue_memory_booked[i] == false)
             {
                 _internal_queue_memory_booked[i] = true;
-                return cart_id{i};
+                return cart_memory_id{i};
             }
         }
 
@@ -310,9 +310,9 @@ struct slotted_cart_queue<value_t>::queue_memory_t
     {
         // TODO remove
         std::ptrdiff_t start_offset = slot_cart.memory_region().data() - _internal_queue_memory.data();
-        cart_id cart{start_offset / _cart_capacity};
+        cart_memory_id cart{start_offset / _cart_capacity};
 
-        _internal_queue_memory_booked[cart.cart_id] = false;
+        _internal_queue_memory_booked[cart.cart_memory_id] = false;
         slot_cart.memory_region() = std::span<value_t>{}; // reset data
     }
 

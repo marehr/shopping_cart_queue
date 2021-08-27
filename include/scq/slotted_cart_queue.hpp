@@ -55,7 +55,7 @@ public:
 
     bool valid() const
     {
-        return _cart_queue != nullptr && _valid == true;
+        return _cart_queue != nullptr;
     }
 
     std::pair<scq::slot_id, std::span<value_type>> get()
@@ -72,7 +72,6 @@ private:
 
     scq::slot_id _id{};
     std::span<value_type> _cart_span{};
-    bool _valid{true};
 
     slotted_cart_queue<value_type> * _cart_queue{nullptr};
 };
@@ -258,8 +257,7 @@ private:
         cart_future_type cart{};
         cart._id = tmp_cart.first;
         cart._cart_span = std::move(tmp_cart.second); // TODO: memory should be owned by the queue not the cart
-        cart._valid = !queue_was_empty;
-        cart._cart_queue = this;
+        cart._cart_queue = !queue_was_empty ? this : nullptr;
         return cart;
     }
 

@@ -82,12 +82,17 @@ class slotted_cart_queue
 {
     struct cart_slots_t
     {
-        using _internal_slot_cart = std::vector<value_t>;
+        using _internal_slot_cart_type = std::vector<value_t>;
+
+        cart_slots_t(scq::slot_count slot_count, scq::cart_capacity cart_capacity) :
+            _cart_capacity{cart_capacity.cart_capacity},
+            _internal_cart_slots(slot_count.slot_count)  // default init slot_count many vectors
+        {}
 
         struct slot_cart_t
         {
             scq::slot_id _slot_id;
-            _internal_slot_cart * _internal_slot_cart_ptr;
+            _internal_slot_cart_type * _internal_slot_cart_ptr;
             size_t _cart_capacity;
 
             size_t size()
@@ -119,16 +124,17 @@ class slotted_cart_queue
 
         size_t size()
         {
-            return csq->_cart_slots.size();
+            return _internal_cart_slots.size();
         }
 
         slot_cart_t slot(scq::slot_id slot_id)
         {
-            _internal_slot_cart & slot_cart = csq->_cart_slots[slot_id.slot_id];
-            return {slot_id, &slot_cart, csq->_cart_capacity};
+            _internal_slot_cart_type & slot_cart = _internal_cart_slots[slot_id.slot_id];
+            return {slot_id, &slot_cart, _cart_capacity};
         }
 
-        slotted_cart_queue * csq;
+        size_t _cart_capacity{};
+        std::vector<_internal_slot_cart_type> _internal_cart_slots{}; // position is slot_id
     };
 
 public:
@@ -147,7 +153,7 @@ public:
           _cart_capacity{cart_capacity.cart_capacity},
           _empty_cart_count{static_cast<std::ptrdiff_t>(_cart_count)},
           _full_cart_count{0},
-          _cart_slots(slots.slot_count) // default init slot_count many vectors
+          _cart_slots2{slots, cart_capacity}
     {
         if (_cart_count < _slot_count)
             throw std::logic_error{"The number of carts must be >= the number of slots."};
@@ -372,9 +378,7 @@ private:
     bool _queue_closed{false};
     std::vector<_internal_cart_type> _full_cart_queue{};
 
-    std::vector<std::vector<value_type>> _cart_slots{}; // position is slot_id
-
-    cart_slots_t _cart_slots2{this};
+    cart_slots_t _cart_slots2{scq::slot_count{_slot_count}, scq::cart_capacity{_cart_capacity}};
 
     std::mutex _cart_management_mutex;
     std::condition_variable _empty_cart_queue_empty_or_closed_cv;

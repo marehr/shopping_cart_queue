@@ -80,6 +80,42 @@ private:
 template <typename value_t>
 class slotted_cart_queue
 {
+    struct cart_slots_t
+    {
+        using _internal_slot_cart = std::vector<value_t>;
+
+        struct slot_cart_t
+        {
+            scq::slot_id _slot_id;
+            _internal_slot_cart * _slot_cart_ptr;
+            size_t _cart_capacity;
+
+            bool empty()
+            {
+                return _slot_cart_ptr->empty();
+            }
+
+            bool full()
+            {
+                return _slot_cart_ptr->size() >= _cart_capacity;
+            }
+
+            void emplace_back(value_t value)
+            {
+                assert(_slot_cart_ptr->size() < _cart_capacity);
+                _slot_cart_ptr->emplace_back(std::move(value));
+            }
+        };
+
+        slot_cart_t slot(scq::slot_id slot_id)
+        {
+            _internal_slot_cart & slot_cart = csq->_cart_slots[slot_id.slot_id];
+            return {slot_id, &slot_cart, csq->_cart_capacity};
+        }
+
+        slotted_cart_queue * csq;
+    };
+
 public:
     using value_type = value_t;
     using cart_type = cart<value_type>;
@@ -276,11 +312,7 @@ private:
 
     void add_value_to_slot_cart(scq::slot_id slot, value_type value)
     {
-        std::vector<value_type> & slot_cart = _cart_slots[slot.slot_id];
-
-        assert(slot_cart.size() < _cart_capacity);
-
-        slot_cart.emplace_back(std::move(value));
+        _cart_slots2.slot(slot).emplace_back(value);
     }
 
     _cart_type dequeue_slot_cart_from_full_cart_queue()
@@ -305,14 +337,12 @@ private:
 
     bool slot_cart_is_empty(scq::slot_id slot)
     {
-        auto & slot_cart = _cart_slots[slot.slot_id];
-        return slot_cart.empty();
+        return _cart_slots2.slot(slot).empty();
     }
 
     bool slot_cart_is_full(scq::slot_id slot)
     {
-        auto & slot_cart = _cart_slots[slot.slot_id];
-        return slot_cart.size() >= _cart_capacity;
+        return _cart_slots2.slot(slot).full();
     }
 
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
@@ -333,6 +363,8 @@ private:
     std::vector<_cart_type> _full_cart_queue{};
 
     std::vector<std::vector<value_type>> _cart_slots{}; // position is slot_id
+
+    cart_slots_t _cart_slots2{this};
 
     std::mutex _cart_management_mutex;
     std::condition_variable _empty_cart_queue_empty_or_closed_cv;

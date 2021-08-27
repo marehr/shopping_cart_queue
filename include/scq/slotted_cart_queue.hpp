@@ -290,7 +290,7 @@ public:
 
                 if (slot_cart.full())
                 {
-                    full_queue_was_empty = full_slot_cart_queue_is_empty();
+                    full_queue_was_empty = _full_carts_queue.empty();
                     move_slot_cart_into_full_cart_queue(slot);
                 }
             }
@@ -305,7 +305,7 @@ public:
 
     cart_future_type dequeue()
     {
-        typename full_carts_queue_t::full_cart_type _tmp_cart{};
+        typename full_carts_queue_t::full_cart_type _tmp_full_cart{};
 
         bool full_queue_was_empty{};
 
@@ -315,14 +315,15 @@ public:
             _full_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this]
             {
                 // wait until first cart is full
-                return !full_slot_cart_queue_is_empty() || _queue_closed == true;
+                return !_full_carts_queue.empty() || _queue_closed == true;
             });
 
-            full_queue_was_empty = full_slot_cart_queue_is_empty();
+            full_queue_was_empty = _full_carts_queue.empty();
 
             if (!full_queue_was_empty)
             {
-                _tmp_cart = dequeue_slot_cart_from_full_cart_queue();
+                _tmp_full_cart = _full_carts_queue.dequeue();
+                assert_cart_count_variant();
             }
         }
 
@@ -335,7 +336,7 @@ public:
         // NOTE: this also handles full_queue_was_empty; if full_queue_was_empty we return a no_state cart
         // this has a asymmetric behaviour from enqueue as we assume multiple "polling" (dequeue) threads. The queue
         // should be closed after all the data was pushed.
-        return create_cart_future(_tmp_cart, full_queue_was_empty);
+        return create_cart_future(_tmp_full_cart, full_queue_was_empty);
     }
 
     void close()
@@ -405,18 +406,6 @@ private:
         cart._valid = !queue_was_empty;
         cart._cart_queue = this;
         return cart;
-    }
-
-    typename full_carts_queue_t::full_cart_type dequeue_slot_cart_from_full_cart_queue()
-    {
-        auto tmp = _full_carts_queue.dequeue();
-        assert_cart_count_variant();
-        return tmp;
-    }
-
-    bool full_slot_cart_queue_is_empty()
-    {
-        return _full_carts_queue.empty();
     }
 
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)

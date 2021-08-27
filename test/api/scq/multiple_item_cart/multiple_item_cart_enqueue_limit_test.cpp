@@ -365,11 +365,14 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_mi
     std::this_thread::sleep_for(wait_time);
     EXPECT_EQ(enqueue_count.load(), 3);
 
+    std::atomic_size_t full_cart_count{};
+    std::atomic_size_t half_filled_cart_count{};
+
     // concurrently dequeue
     std::vector<std::thread> dequeue_threads(5);
     std::generate(dequeue_threads.begin(), dequeue_threads.end(), [&]()
     {
-        return std::thread([&queue, &expected]
+        return std::thread([&queue, &expected, &full_cart_count, &half_filled_cart_count]
         {
             scq::cart<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
@@ -377,6 +380,9 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_mi
 
             EXPECT_GE(cart_data.second.size(), 1u);
             EXPECT_LE(cart_data.second.size(), 2u);
+
+            half_filled_cart_count += cart_data.second.size() == 1;
+            full_cart_count += cart_data.second.size() == 2;
 
             for (auto && value: cart_data.second)
             {
@@ -392,6 +398,9 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_mi
 
     for (auto && dequeue_thread: dequeue_threads)
         dequeue_thread.join();
+
+    EXPECT_EQ(full_cart_count.load(), 3);
+    EXPECT_EQ(half_filled_cart_count.load(), 2);
 
     // all results seen
     EXPECT_TRUE(expected.empty());

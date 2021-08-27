@@ -151,20 +151,29 @@ public:
 
             queue_was_closed = _queue_closed;
 
-            if (!queue_was_closed && _cart_slots2.slot(slot).empty())
+            auto slot_cart = _cart_slots2.slot(slot);
+
+            if (!queue_was_closed && slot_cart.empty())
             {
-                _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this, slot]
+                _empty_cart_queue_empty_or_closed_cv.wait(cart_management_lock, [this, &slot_cart, slot]
                 {
+                    // we need to refresh the cart in the current slot after wake-up, because it could have changed
+                    // since the last invocation
+                    slot_cart = _cart_slots2.slot(slot);
+
                     // wait until either an empty cart is ready, or the slot has a cart, or the queue was closed
-                    return !empty_slot_cart_queue_is_empty() || !_cart_slots2.slot(slot).empty() || _queue_closed == true;
+                    return !empty_slot_cart_queue_is_empty() || !slot_cart.empty() || _queue_closed == true;
                 });
 
                 queue_was_closed = _queue_closed;
 
                 // if the current slot still has no cart and we have an available empty cart, use that empty cart in
                 // this slot
-                if (!queue_was_closed && _cart_slots2.slot(slot).empty() && !empty_slot_cart_queue_is_empty())
+                if (!queue_was_closed && slot_cart.empty())
                 {
+                    // this assert must be true because of the condition within _empty_cart_queue_empty_or_closed_cv
+                    assert(!empty_slot_cart_queue_is_empty());
+
                     --_empty_cart_count;
                     assert_cart_count_variant();
                 }
@@ -172,9 +181,9 @@ public:
 
             if (!queue_was_closed)
             {
-                _cart_slots2.slot(slot).emplace_back(std::move(value));
+                slot_cart.emplace_back(std::move(value));
 
-                if (_cart_slots2.slot(slot).full())
+                if (slot_cart.full())
                 {
                     full_queue_was_empty = full_slot_cart_queue_is_empty();
                     move_slot_cart_into_full_cart_queue(slot);
@@ -294,9 +303,9 @@ private:
         // active to fill elements must be processed)
         for (size_t slot_id = 0u; slot_id < _cart_slots.size(); ++slot_id)
         {
-            scq::slot_id slot{slot_id};
-            if (!_cart_slots2.slot(slot).empty())
-                move_slot_cart_into_full_cart_queue(slot);
+            auto cart_slot = _cart_slots2.slot(scq::slot_id{slot_id});
+            if (!cart_slot.empty())
+                move_slot_cart_into_full_cart_queue(scq::slot_id{slot_id});
         }
     }
 

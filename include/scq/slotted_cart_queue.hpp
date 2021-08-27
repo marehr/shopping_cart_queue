@@ -153,7 +153,7 @@ public:
           _cart_capacity{cart_capacity.cart_capacity},
           _empty_cart_count{static_cast<std::ptrdiff_t>(_cart_count)},
           _full_cart_count{0},
-          _cart_slots2{slots, cart_capacity}
+          _cart_slots{slots, cart_capacity}
     {
         if (_cart_count < _slot_count)
             throw std::logic_error{"The number of carts must be >= the number of slots."};
@@ -172,7 +172,7 @@ public:
 
             queue_was_closed = _queue_closed;
 
-            auto slot_cart = _cart_slots2.slot(slot);
+            auto slot_cart = _cart_slots.slot(slot);
 
             if (!queue_was_closed && slot_cart.empty())
             {
@@ -180,7 +180,7 @@ public:
                 {
                     // we need to refresh the cart in the current slot after wake-up, because it could have changed
                     // since the last invocation
-                    slot_cart = _cart_slots2.slot(slot);
+                    slot_cart = _cart_slots.slot(slot);
 
                     // wait until either an empty cart is ready, or the slot has a cart, or the queue was closed
                     return !empty_slot_cart_queue_is_empty() || !slot_cart.empty() || _queue_closed == true;
@@ -322,9 +322,9 @@ private:
 
         // put all non-full carts into full queue (no element can't be added any more and all pending elements =
         // active to fill elements must be processed)
-        for (size_t slot_id = 0u; slot_id < _cart_slots2.size(); ++slot_id)
+        for (size_t slot_id = 0u; slot_id < _cart_slots.size(); ++slot_id)
         {
-            auto cart_slot = _cart_slots2.slot(scq::slot_id{slot_id});
+            auto cart_slot = _cart_slots.slot(scq::slot_id{slot_id});
             if (!cart_slot.empty())
                 move_slot_cart_into_full_cart_queue(scq::slot_id{slot_id});
         }
@@ -362,7 +362,7 @@ private:
 
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
     {
-        auto slot_cart = _cart_slots2.slot(slot);
+        auto slot_cart = _cart_slots.slot(slot);
 
         assert(slot_cart.size() > 0); // at least one element
         assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
@@ -378,7 +378,7 @@ private:
     bool _queue_closed{false};
     std::vector<_internal_cart_type> _full_cart_queue{};
 
-    cart_slots_t _cart_slots2{scq::slot_count{_slot_count}, scq::cart_capacity{_cart_capacity}};
+    cart_slots_t _cart_slots{scq::slot_count{_slot_count}, scq::cart_capacity{_cart_capacity}};
 
     std::mutex _cart_management_mutex;
     std::condition_variable _empty_cart_queue_empty_or_closed_cv;

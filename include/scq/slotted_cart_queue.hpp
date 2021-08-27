@@ -179,6 +179,8 @@ class slotted_cart_queue
 
     struct full_carts_queue_t
     {
+        using full_cart_type = std::pair<slot_id, std::vector<value_t>>;
+
         full_carts_queue_t() = default;
         full_carts_queue_t(cart_count cart_count) :
             _count{0},
@@ -195,9 +197,13 @@ class slotted_cart_queue
             ++_count;
         }
 
-        void dequeue()
+        full_cart_type dequeue()
         {
             --_count;
+
+            full_cart_type tmp = std::move(_internal_queue.back());
+            _internal_queue.pop_back();
+            return tmp;
         }
 
         void _check_invariant()
@@ -215,8 +221,7 @@ class slotted_cart_queue
         std::ptrdiff_t _count{};
         std::size_t _cart_count{};
 
-        using _internal_full_cart_type = std::pair<slot_id, std::vector<value_t>>;
-        std::vector<_internal_full_cart_type> _internal_queue{};
+        std::vector<full_cart_type> _internal_queue{};
     };
 
 public:
@@ -300,7 +305,7 @@ public:
 
     cart_future_type dequeue()
     {
-        typename full_carts_queue_t::_internal_full_cart_type _tmp_cart{};
+        typename full_carts_queue_t::full_cart_type _tmp_cart{};
 
         bool full_queue_was_empty{};
 
@@ -392,7 +397,7 @@ private:
         }
     }
 
-    cart_future_type create_cart_future(typename full_carts_queue_t::_internal_full_cart_type tmp_cart, bool queue_was_empty)
+    cart_future_type create_cart_future(typename full_carts_queue_t::full_cart_type tmp_cart, bool queue_was_empty)
     {
         cart_future_type cart{};
         cart._id = tmp_cart.first;
@@ -402,13 +407,10 @@ private:
         return cart;
     }
 
-    typename full_carts_queue_t::_internal_full_cart_type dequeue_slot_cart_from_full_cart_queue()
+    typename full_carts_queue_t::full_cart_type dequeue_slot_cart_from_full_cart_queue()
     {
-        _full_carts_queue.dequeue();
+        auto tmp = _full_carts_queue.dequeue();
         assert_cart_count_variant();
-
-        typename full_carts_queue_t::_internal_full_cart_type tmp = std::move(_full_carts_queue._internal_queue.back());
-        _full_carts_queue._internal_queue.pop_back();
         return tmp;
     }
 

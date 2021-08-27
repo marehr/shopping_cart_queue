@@ -73,7 +73,7 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_single_consumer_all_
 
     // release one full cart to allow enqueue to continue
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -92,7 +92,7 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_single_consumer_all_
 
     for (int i = 0; i < 3; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -167,7 +167,7 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_single_consumer_mixe
 
     // release one full cart to allow enqueue to continue
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -187,7 +187,7 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_single_consumer_mixe
 
     for (int i = 0; i < 3; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -281,7 +281,7 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_al
     {
         return std::thread([&queue, &expected]
         {
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart_future<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -374,7 +374,7 @@ TEST(multiple_item_cart_enqueue_limit_test, single_producer_multiple_consumer_mi
     {
         return std::thread([&queue, &expected, &full_cart_count, &half_filled_cart_count]
         {
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart_future<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -487,7 +487,7 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_single_consumer_al
 
     // release one cart to allow enqueue to continue
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -506,7 +506,7 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_single_consumer_al
 
     for (int i = 0; i < 3; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -598,7 +598,7 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_single_consumer_mi
 
     // release one cart to allow enqueue to continue
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -619,7 +619,7 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_single_consumer_mi
 
     for (int i = 0; i < 3; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -734,7 +734,7 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_multiple_consumer_
     {
         return std::thread([&queue, &expected]
         {
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart_future<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -845,7 +845,7 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_multiple_consumer_
     {
         return std::thread([&queue, &expected, &full_cart_count, &half_filled_cart_count]
         {
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart_future<value_type> cart = queue.dequeue();
             EXPECT_TRUE(cart.valid());
             std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 

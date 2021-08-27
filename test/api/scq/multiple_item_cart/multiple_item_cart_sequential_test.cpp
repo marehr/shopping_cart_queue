@@ -17,7 +17,7 @@ TEST(multiple_item_cart_sequential, single_cart_enqueue_dequeue)
     queue.enqueue(scq::slot_id{1}, value_type{101});
 
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -31,7 +31,7 @@ TEST(multiple_item_cart_sequential, single_cart_enqueue_dequeue)
     queue.enqueue(scq::slot_id{2}, value_type{201});
 
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -69,7 +69,7 @@ TEST(multiple_item_cart_sequential, multiple_enqueue_dequeue)
 
     for (int i = 0; i < 6 / 2; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 

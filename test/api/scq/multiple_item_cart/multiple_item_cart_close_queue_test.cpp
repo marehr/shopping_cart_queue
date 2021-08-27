@@ -154,7 +154,7 @@ TEST(multiple_item_cart_close_queue, no_producer_single_consumer_dequeue_after_c
     queue.close();
 
     // should be non-blocking if queue was closed (without close it would be blocking)
-    scq::cart<value_type> cart = queue.dequeue();
+    scq::cart_future<value_type> cart = queue.dequeue();
 
     EXPECT_FALSE(cart.valid());
 
@@ -172,7 +172,7 @@ TEST(multiple_item_cart_close_queue, no_producer_single_consumer_release_blockin
     std::thread dequeue_thread{[&queue]
     {
         // should be blocking if queue was not yet closed
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
 
         EXPECT_FALSE(cart.valid());
 
@@ -201,7 +201,7 @@ TEST(multiple_item_cart_close_queue, no_producer_multiple_consumer_dequeue_after
     for (int i = 0; i < 5; ++i) // TODO: this isn't really multiple consumer.
     {
         // should be non-blocking if queue was closed
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
 
         EXPECT_FALSE(cart.valid());
 
@@ -224,7 +224,7 @@ TEST(multiple_item_cart_close_queue, no_producer_multiple_consumer_release_block
         return std::thread([&queue]
         {
             // should be blocking if queue was not yet closed
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart_future<value_type> cart = queue.dequeue();
 
             EXPECT_FALSE(cart.valid());
 
@@ -273,7 +273,7 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     for (int i = 0; i < 6 / 2; ++i)
     {
         // close allows to dequeue remaining elements
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -316,7 +316,7 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     for (int i = 0; i < 4; ++i)
     {
         // close allows to dequeue remaining elements
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -374,7 +374,7 @@ TEST(multiple_item_cart_close_queue, single_producer_single_consumer_dequeue_aft
     for (int i = 0; i < 6 / 2 + 4; ++i)
     {
         // close allows to dequeue remaining elements
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -470,7 +470,7 @@ TEST(multiple_item_cart_close_queue, multiple_producer_multiple_consumer_release
             while (true)
             {
                 // should be blocking if queue was not yet closed
-                scq::cart<value_type> cart = queue.dequeue();
+                scq::cart_future<value_type> cart = queue.dequeue();
 
                 // abort if queue was closed
                 if (!cart.valid())

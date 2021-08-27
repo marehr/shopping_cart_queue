@@ -61,7 +61,7 @@ TEST(multiple_item_cart_concurrent_integration, multiple_producer_multiple_consu
 
             while (true)
             {
-                scq::cart<value_type> cart = queue.dequeue(); // might block
+                scq::cart_future<value_type> cart = queue.dequeue(); // might block
 
                 if (!cart.valid())
                 {

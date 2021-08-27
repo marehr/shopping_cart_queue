@@ -37,15 +37,15 @@ template <typename value_t>
 class slotted_cart_queue;
 
 template <typename value_t>
-class cart
+class cart_future
 {
 public:
-    cart() = default;
-    cart(cart const &) = delete;
-    cart(cart &&) = default;
-    cart & operator=(cart const &) = delete;
-    cart & operator=(cart &&) = default;
-    ~cart()
+    cart_future() = default;
+    cart_future(cart_future const &) = delete;
+    cart_future(cart_future &&) = default;
+    cart_future & operator=(cart_future const &) = delete;
+    cart_future & operator=(cart_future &&) = default;
+    ~cart_future()
     {
         if (valid())
             _cart_queue->notify_processed_cart(*this);
@@ -86,7 +86,7 @@ class slotted_cart_queue
 
 public:
     using value_type = value_t;
-    using cart_future_type = cart<value_type>;
+    using cart_future_type = cart_future<value_type>;
 
     slotted_cart_queue() = default;
     slotted_cart_queue(slotted_cart_queue const &) = delete;

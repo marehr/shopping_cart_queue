@@ -154,7 +154,7 @@ TEST(single_item_cart_close_queue, no_producer_single_consumer_dequeue_after_clo
     queue.close();
 
     // should be non-blocking if queue was closed (without close it would be blocking)
-    scq::cart<value_type> cart = queue.dequeue();
+    scq::cart_future<value_type> cart = queue.dequeue();
 
     EXPECT_FALSE(cart.valid());
 
@@ -173,7 +173,7 @@ TEST(single_item_cart_close_queue, no_producer_single_consumer_release_blocking_
     std::thread dequeue_thread{[&queue]
     {
         // should be blocking if queue was not yet closed
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
 
         EXPECT_FALSE(cart.valid());
 
@@ -203,7 +203,7 @@ TEST(single_item_cart_close_queue, no_producer_multiple_consumer_dequeue_after_c
     for (int i = 0; i < 5; ++i) // TODO: this isn't really multiple consumer.
     {
         // should be non-blocking if queue was closed
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
 
         EXPECT_FALSE(cart.valid());
 
@@ -227,7 +227,7 @@ TEST(single_item_cart_close_queue, no_producer_multiple_consumer_release_blockin
         return std::thread([&queue]
         {
             // should be blocking if queue was not yet closed
-            scq::cart<value_type> cart = queue.dequeue();
+            scq::cart_future<value_type> cart = queue.dequeue();
 
             EXPECT_FALSE(cart.valid());
 
@@ -274,7 +274,7 @@ TEST(single_item_cart_close_queue, single_producer_single_consumer_dequeue_after
     for (int i = 0; i < 5; ++i)
     {
         // close allows to dequeue remaining elements
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -359,7 +359,7 @@ TEST(single_item_cart_close_queue, multiple_producer_multiple_consumer_release_b
             while (true)
             {
                 // should be blocking if queue was not yet closed
-                scq::cart<value_type> cart = queue.dequeue();
+                scq::cart_future<value_type> cart = queue.dequeue();
 
                 // abort if queue was closed
                 if (!cart.valid())

@@ -18,7 +18,7 @@ TEST(single_item_cart_sequential, single_enqueue_dequeue)
 
     // item enqueued will be available immediately. (cart can contain only one item)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -30,7 +30,7 @@ TEST(single_item_cart_sequential, single_enqueue_dequeue)
 
     // item enqueued will be available immediately. (cart can contain only one item)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 
@@ -65,7 +65,7 @@ TEST(single_item_cart_sequential, multiple_enqueue_dequeue)
 
     for (int i = 0; i < 5; ++i)
     {
-        scq::cart<value_type> cart = queue.dequeue();
+        scq::cart_future<value_type> cart = queue.dequeue();
         EXPECT_TRUE(cart.valid());
         std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
 

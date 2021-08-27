@@ -63,7 +63,7 @@ public:
         if (!valid()) // slotted_cart_queue is already closed and no further elements.
             throw std::future_error{std::future_errc::no_state};
 
-        return {_id, std::span<value_type>{_cart_span.data(), _cart_span.size()}};
+        return {_id, _cart_span};
     }
 
 private:
@@ -71,7 +71,7 @@ private:
     friend class slotted_cart_queue;
 
     scq::slot_id _id{};
-    std::vector<value_type> _cart_span{};
+    std::span<value_type> _cart_span{};
     bool _valid{true};
 
     slotted_cart_queue<value_type> * _cart_queue{nullptr};
@@ -172,7 +172,7 @@ public:
 
     cart_future_type dequeue()
     {
-        typename full_carts_queue_t::full_cart_type2 _tmp_full_cart{};
+        typename full_carts_queue_t::full_cart_type _tmp_full_cart{};
 
         bool full_queue_was_empty{};
 
@@ -189,12 +189,8 @@ public:
 
             if (!full_queue_was_empty)
             {
-                auto tmp_full_cart = _full_carts_queue.dequeue();
+                _tmp_full_cart = _full_carts_queue.dequeue();
                 assert_cart_count_variant();
-
-                _tmp_full_cart.first = scq::slot_id{tmp_full_cart.first};
-                _tmp_full_cart.second = std::vector(tmp_full_cart.second.begin(), tmp_full_cart.second.end()); // copy data to future
-                _queue_memory.deallocate(tmp_full_cart.second); // TODO remove me
             }
         }
 
@@ -241,7 +237,7 @@ private:
         _full_carts_queue._check_invariant();
     }
 
-    void notify_processed_cart(cart_future_type & cart)
+    void notify_processed_cart(cart_future_type & cart_future)
     {
         bool empty_queue_was_empty{};
         {
@@ -249,7 +245,7 @@ private:
 
             empty_queue_was_empty = _empty_carts_queue.empty();
 
-            _empty_carts_queue.enqueue(); // TODO add empty cart to queue
+            _empty_carts_queue.enqueue(cart_future._cart_span);
             assert_cart_count_variant();
         }
 
@@ -257,7 +253,7 @@ private:
             _empty_cart_queue_empty_or_closed_cv.notify_all();
     }
 
-    cart_future_type create_cart_future(typename full_carts_queue_t::full_cart_type2 tmp_cart, bool queue_was_empty)
+    cart_future_type create_cart_future(typename full_carts_queue_t::full_cart_type tmp_cart, bool queue_was_empty)
     {
         cart_future_type cart{};
         cart._id = tmp_cart.first;
@@ -421,8 +417,10 @@ struct slotted_cart_queue<value_t>::empty_carts_queue_t
         return _count == 0;
     }
 
-    void enqueue()
+    void enqueue(std::span<value_t> memory_region)
     {
+        _queue_memory->deallocate(memory_region);
+
         ++_count;
     }
 

@@ -193,7 +193,7 @@ public:
                     slot_cart = _cart_slots.slot(slot);
 
                     // wait until either an empty cart is ready, or the slot has a cart, or the queue was closed
-                    return !empty_slot_cart_queue_is_empty() || !slot_cart.empty() || _queue_closed == true;
+                    return !_empty_carts_queue.empty() || !slot_cart.empty() || _queue_closed == true;
                 });
 
                 queue_was_closed = _queue_closed;
@@ -203,7 +203,7 @@ public:
                 if (!queue_was_closed && slot_cart.empty())
                 {
                     // this assert must be true because of the condition within _empty_cart_queue_empty_or_closed_cv
-                    assert(!empty_slot_cart_queue_is_empty());
+                    assert(!_empty_carts_queue.empty());
 
                     --_empty_carts_queue._count;
                     assert_cart_count_variant();
@@ -317,7 +317,7 @@ private:
         {
             std::unique_lock<std::mutex> cart_management_lock(_cart_management_mutex);
 
-            empty_queue_was_empty = empty_slot_cart_queue_is_empty();
+            empty_queue_was_empty = _empty_carts_queue.empty();
 
             ++_empty_carts_queue._count;
             assert_cart_count_variant();
@@ -359,11 +359,6 @@ private:
         _internal_cart_type tmp = std::move(_full_cart_queue.back());
         _full_cart_queue.pop_back();
         return tmp;
-    }
-
-    bool empty_slot_cart_queue_is_empty()
-    {
-        return _empty_carts_queue.empty();
     }
 
     bool full_slot_cart_queue_is_empty()

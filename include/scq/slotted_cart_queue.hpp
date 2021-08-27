@@ -118,7 +118,7 @@ class slotted_cart_queue
 
 public:
     using value_type = value_t;
-    using cart_type = cart<value_type>;
+    using cart_future_type = cart<value_type>;
 
     slotted_cart_queue() = default;
     slotted_cart_queue(slotted_cart_queue const &) = delete;
@@ -198,9 +198,9 @@ public:
             throw std::overflow_error{"slotted_cart_queue is already closed."};
     }
 
-    cart_type dequeue()
+    cart_future_type dequeue()
     {
-        _cart_type _tmp_cart{};
+        _internal_cart_type _tmp_cart{};
 
         bool full_queue_was_empty{};
 
@@ -254,9 +254,9 @@ private:
     std::ptrdiff_t _empty_cart_count{static_cast<std::ptrdiff_t>(_cart_count)}; // how many carts are empty <= _cart_count
     std::ptrdiff_t _full_cart_count{}; // how many carts are full <= _cart_count
 
-    using _cart_type = std::pair<slot_id, std::vector<value_type>>;
+    using _internal_cart_type = std::pair<slot_id, std::vector<value_type>>;
 
-    friend cart_type;
+    friend cart_future_type;
 
     void assert_cart_count_variant()
     {
@@ -279,7 +279,7 @@ private:
             throw std::runtime_error{std::string{"_full_cart_count: FULL, _full_cart_count: "} + std::to_string(_full_cart_count) + " <= " + std::to_string(_cart_count)};
     }
 
-    void notify_processed_cart(cart_type & cart)
+    void notify_processed_cart(cart_future_type & cart)
     {
         bool empty_queue_was_empty{};
         {
@@ -309,9 +309,9 @@ private:
         }
     }
 
-    cart_type create_cart_future(_cart_type tmp_cart, bool queue_was_empty)
+    cart_future_type create_cart_future(_internal_cart_type tmp_cart, bool queue_was_empty)
     {
-        cart_type cart{};
+        cart_future_type cart{};
         cart._id = tmp_cart.first;
         cart._cart_span = std::move(tmp_cart.second); // TODO: memory should be owned by the queue not the cart
         cart._valid = !queue_was_empty;
@@ -319,12 +319,12 @@ private:
         return cart;
     }
 
-    _cart_type dequeue_slot_cart_from_full_cart_queue()
+    _internal_cart_type dequeue_slot_cart_from_full_cart_queue()
     {
         --_full_cart_count;
         assert_cart_count_variant();
 
-        _cart_type tmp = std::move(_full_cart_queue.back());
+        _internal_cart_type tmp = std::move(_full_cart_queue.back());
         _full_cart_queue.pop_back();
         return tmp;
     }
@@ -354,7 +354,7 @@ private:
     }
 
     bool _queue_closed{false};
-    std::vector<_cart_type> _full_cart_queue{};
+    std::vector<_internal_cart_type> _full_cart_queue{};
 
     std::vector<std::vector<value_type>> _cart_slots{}; // position is slot_id
 

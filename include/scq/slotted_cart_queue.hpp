@@ -80,175 +80,9 @@ private:
 template <typename value_t>
 class slotted_cart_queue
 {
+    struct cart_slots_t;
+    struct empty_carts_queue_t;
     struct full_carts_queue_t;
-
-    struct cart_slots_t
-    {
-        using _internal_slot_cart_type = std::vector<value_t>;
-
-        cart_slots_t() = default;
-        cart_slots_t(scq::slot_count slot_count, scq::cart_capacity cart_capacity) :
-            _cart_capacity{cart_capacity.cart_capacity},
-            _internal_cart_slots(slot_count.slot_count)  // default init slot_count many vectors
-        {}
-
-        struct slot_cart_t
-        {
-            scq::slot_id _slot_id;
-            _internal_slot_cart_type * _internal_slot_cart_ptr;
-            size_t _cart_capacity;
-
-            scq::slot_id slot_id()
-            {
-                return _slot_id;
-            }
-
-            size_t size()
-            {
-                return _internal_slot_cart_ptr->size();
-            }
-
-            size_t capacity()
-            {
-                return _cart_capacity;
-            }
-
-            bool empty()
-            {
-                return _internal_slot_cart_ptr->empty();
-            }
-
-            bool full()
-            {
-                return size() >= capacity();
-            }
-
-            void emplace_back(value_t value)
-            {
-                assert(size() < capacity());
-                _internal_slot_cart_ptr->emplace_back(std::move(value));
-            }
-        };
-
-        slot_cart_t slot(scq::slot_id slot_id)
-        {
-            _internal_slot_cart_type & slot_cart = _internal_cart_slots[slot_id.slot_id];
-            return {slot_id, &slot_cart, _cart_capacity};
-        }
-
-        void move_active_carts_into_full_carts_queue(full_carts_queue_t & full_carts_queue)
-        {
-            // TODO: if pending slots are more than queue capacity? is that a problem?
-
-            // put all non-empty / non-full carts into full queue (no element can't be added any more and all pending
-            // elements = active to fill elements must be processed)
-            for (size_t slot_id = 0u; slot_id < _internal_cart_slots.size(); ++slot_id)
-            {
-                auto slot_cart = slot(scq::slot_id{slot_id});
-                if (!slot_cart.empty())
-                {
-                    full_carts_queue.enqueue(slot_cart);
-                    full_carts_queue._check_invariant();
-                }
-            }
-        }
-
-        size_t _cart_capacity{};
-        std::vector<_internal_slot_cart_type> _internal_cart_slots{}; // position is slot_id
-    };
-
-    struct empty_carts_queue_t
-    {
-        empty_carts_queue_t() = default;
-        empty_carts_queue_t(cart_count cart_count) :
-            _count{static_cast<std::ptrdiff_t>(cart_count.cart_count)},
-            _cart_count{cart_count.cart_count}
-        {}
-
-        bool empty()
-        {
-            return _count == 0;
-        }
-
-        void enqueue()
-        {
-            ++_count;
-        }
-
-        void dequeue()
-        {
-            --_count;
-        }
-
-        void _check_invariant()
-        {
-            assert(0 <= _count);
-            assert(_count <= _cart_count);
-
-            if (!(0 <= _count))
-                throw std::runtime_error{"empty_carts_queue.count: negative"};
-
-            if (!(_count <= _cart_count))
-                throw std::runtime_error{std::string{"empty_carts_queue.count: FULL, _count: "} + std::to_string(_count) + " <= " + std::to_string(_cart_count)};
-        }
-
-        std::ptrdiff_t _count{};
-        std::size_t _cart_count{};
-    };
-
-    struct full_carts_queue_t
-    {
-        using full_cart_type = std::pair<slot_id, std::vector<value_t>>;
-
-        full_carts_queue_t() = default;
-        full_carts_queue_t(cart_count cart_count) :
-            _count{0},
-            _cart_count{cart_count.cart_count}
-        {}
-
-        bool empty()
-        {
-            return _count == 0;
-        }
-
-        void enqueue(typename cart_slots_t::slot_cart_t & slot_cart)
-        {
-            ++_count;
-
-            assert(slot_cart.size() > 0); // at least one element
-            assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
-
-            auto & internal_slot_cart = *slot_cart._internal_slot_cart_ptr;
-            _internal_queue.emplace_back(slot_cart.slot_id(), std::move(internal_slot_cart));
-            internal_slot_cart = {}; // reset slotted cart
-        }
-
-        full_cart_type dequeue()
-        {
-            --_count;
-
-            full_cart_type tmp = std::move(_internal_queue.back());
-            _internal_queue.pop_back();
-            return tmp;
-        }
-
-        void _check_invariant()
-        {
-            assert(0 <= _count);
-            assert(_count <= _cart_count);
-
-            if (!(0 <= _count))
-                throw std::runtime_error{"full_carts_queue.count: negative"};
-
-            if (!(_count <= _cart_count))
-                throw std::runtime_error{std::string{"full_carts_queue.count: FULL, _count: "} + std::to_string(_count) + " <= " + std::to_string(_cart_count)};
-        }
-
-        std::ptrdiff_t _count{};
-        std::size_t _cart_count{};
-
-        std::vector<full_cart_type> _internal_queue{};
-    };
 
 public:
     using value_type = value_t;
@@ -429,6 +263,178 @@ private:
     std::mutex _cart_management_mutex;
     std::condition_variable _empty_cart_queue_empty_or_closed_cv;
     std::condition_variable _full_cart_queue_empty_or_closed_cv;
+};
+
+template <typename value_t>
+struct slotted_cart_queue<value_t>::cart_slots_t
+{
+    using _internal_slot_cart_type = std::vector<value_t>;
+
+    cart_slots_t() = default;
+    cart_slots_t(scq::slot_count slot_count, scq::cart_capacity cart_capacity) :
+        _cart_capacity{cart_capacity.cart_capacity},
+        _internal_cart_slots(slot_count.slot_count)  // default init slot_count many vectors
+    {}
+
+    struct slot_cart_t
+    {
+        scq::slot_id _slot_id;
+        _internal_slot_cart_type * _internal_slot_cart_ptr;
+        size_t _cart_capacity;
+
+        scq::slot_id slot_id()
+        {
+            return _slot_id;
+        }
+
+        size_t size()
+        {
+            return _internal_slot_cart_ptr->size();
+        }
+
+        size_t capacity()
+        {
+            return _cart_capacity;
+        }
+
+        bool empty()
+        {
+            return _internal_slot_cart_ptr->empty();
+        }
+
+        bool full()
+        {
+            return size() >= capacity();
+        }
+
+        void emplace_back(value_t value)
+        {
+            assert(size() < capacity());
+            _internal_slot_cart_ptr->emplace_back(std::move(value));
+        }
+    };
+
+    slot_cart_t slot(scq::slot_id slot_id)
+    {
+        _internal_slot_cart_type & slot_cart = _internal_cart_slots[slot_id.slot_id];
+        return {slot_id, &slot_cart, _cart_capacity};
+    }
+
+    void move_active_carts_into_full_carts_queue(full_carts_queue_t & full_carts_queue)
+    {
+        // TODO: if pending slots are more than queue capacity? is that a problem?
+
+        // put all non-empty / non-full carts into full queue (no element can't be added any more and all pending
+        // elements = active to fill elements must be processed)
+        for (size_t slot_id = 0u; slot_id < _internal_cart_slots.size(); ++slot_id)
+        {
+            auto slot_cart = slot(scq::slot_id{slot_id});
+            if (!slot_cart.empty())
+            {
+                full_carts_queue.enqueue(slot_cart);
+                full_carts_queue._check_invariant();
+            }
+        }
+    }
+
+    size_t _cart_capacity{};
+    std::vector<_internal_slot_cart_type> _internal_cart_slots{}; // position is slot_id
+};
+
+template <typename value_t>
+struct slotted_cart_queue<value_t>::empty_carts_queue_t
+{
+    empty_carts_queue_t() = default;
+    empty_carts_queue_t(cart_count cart_count) :
+        _count{static_cast<std::ptrdiff_t>(cart_count.cart_count)},
+        _cart_count{cart_count.cart_count}
+    {}
+
+    bool empty()
+    {
+        return _count == 0;
+    }
+
+    void enqueue()
+    {
+        ++_count;
+    }
+
+    void dequeue()
+    {
+        --_count;
+    }
+
+    void _check_invariant()
+    {
+        assert(0 <= _count);
+        assert(_count <= _cart_count);
+
+        if (!(0 <= _count))
+            throw std::runtime_error{"empty_carts_queue.count: negative"};
+
+        if (!(_count <= _cart_count))
+            throw std::runtime_error{std::string{"empty_carts_queue.count: FULL, _count: "} + std::to_string(_count) + " <= " + std::to_string(_cart_count)};
+    }
+
+    std::ptrdiff_t _count{};
+    std::size_t _cart_count{};
+};
+
+template <typename value_t>
+struct slotted_cart_queue<value_t>::full_carts_queue_t
+{
+    using full_cart_type = std::pair<slot_id, std::vector<value_t>>;
+    using slot_cart_type = typename cart_slots_t::slot_cart_t;
+
+    full_carts_queue_t() = default;
+    full_carts_queue_t(cart_count cart_count) :
+        _count{0},
+        _cart_count{cart_count.cart_count}
+    {}
+
+    bool empty()
+    {
+        return _count == 0;
+    }
+
+    void enqueue(slot_cart_type & slot_cart)
+    {
+        ++_count;
+
+        assert(slot_cart.size() > 0); // at least one element
+        assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
+
+        auto & internal_slot_cart = *slot_cart._internal_slot_cart_ptr;
+        _internal_queue.emplace_back(slot_cart.slot_id(), std::move(internal_slot_cart));
+        internal_slot_cart = {}; // reset slotted cart
+    }
+
+    full_cart_type dequeue()
+    {
+        --_count;
+
+        full_cart_type tmp = std::move(_internal_queue.back());
+        _internal_queue.pop_back();
+        return tmp;
+    }
+
+    void _check_invariant()
+    {
+        assert(0 <= _count);
+        assert(_count <= _cart_count);
+
+        if (!(0 <= _count))
+            throw std::runtime_error{"full_carts_queue.count: negative"};
+
+        if (!(_count <= _cart_count))
+            throw std::runtime_error{std::string{"full_carts_queue.count: FULL, _count: "} + std::to_string(_count) + " <= " + std::to_string(_cart_count)};
+    }
+
+    std::ptrdiff_t _count{};
+    std::size_t _cart_count{};
+
+    std::vector<full_cart_type> _internal_queue{};
 };
 
 } // namespace scq

@@ -63,7 +63,7 @@ public:
         if (!valid()) // slotted_cart_queue is already closed and no further elements.
             throw std::future_error{std::future_errc::no_state};
 
-        return {_id, _cart_span};
+        return {_id, _memory_region};
     }
 
 private:
@@ -71,7 +71,7 @@ private:
     friend class slotted_cart_queue;
 
     scq::slot_id _id{};
-    std::span<value_type> _cart_span{};
+    std::span<value_type> _memory_region{};
 
     slotted_cart_queue<value_type> * _cart_queue{nullptr};
 };
@@ -186,13 +186,13 @@ public:
             {
                 auto full_cart = _full_carts_queue.dequeue();
                 cart_future._id = full_cart.first;
-                cart_future._cart_span = std::move(full_cart.second);
+                cart_future._memory_region = std::move(full_cart.second);
                 cart_future._cart_queue = this;
                 assert_cart_count_variant();
             }
         }
 
-        // NOTE: cart memory will be released in notify_processed_cart after cart_future was destroyed
+        // NOTE: cart memory will be released by notify_processed_cart after cart_future was destroyed
         return cart_future;
     }
 
@@ -235,7 +235,7 @@ private:
 
             empty_queue_was_empty = _empty_carts_queue.empty();
 
-            _empty_carts_queue.enqueue(cart_future._cart_span);
+            _empty_carts_queue.enqueue(cart_future._memory_region);
             assert_cart_count_variant();
         }
 
@@ -279,7 +279,7 @@ struct slotted_cart_queue<value_t>::cart_slots_t
     cart_slots_t() = default;
     cart_slots_t(scq::slot_count slot_count, scq::cart_capacity cart_capacity) :
         _cart_capacity{cart_capacity.cart_capacity},
-        _internal_cart_slots(slot_count.slot_count)  // default init slot_count many vectors
+        _internal_cart_slots(slot_count.slot_count) // default init slot_count many vectors
     {}
 
     struct slot_cart_t

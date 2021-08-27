@@ -522,3 +522,123 @@ TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_single_consumer_al
     EXPECT_TRUE(expected.empty());
 }
 
+TEST(multiple_item_cart_enqueue_limit_test, multiple_producer_single_consumer_mixed_carts)
+{
+    using value_type = int;
+
+    scq::slotted_cart_queue<value_type> queue{scq::slot_count{3}, scq::cart_count{3}, scq::cart_capacity{2}};
+
+    // expected set contains all (expected) results; after the test which set should be empty (each matching result will
+    // be crossed out)
+    concurrent_cross_off_list<std::pair<std::size_t, value_type>> expected
+    {
+        {0, value_type{001}}, // non-full cart 1
+        {1, value_type{100}},
+        {1, value_type{101}}, // full cart 1
+        {1, value_type{102}}, // non-full cart 2
+        {2, value_type{200}},
+        {2, value_type{201}} // full cart 2
+    };
+
+    std::mutex enqueue_count_mutex{};
+    std::condition_variable enqueue_count_cv{};
+    std::atomic_size_t enqueue_count{};
+
+    // initialise 6 producing threads
+    std::vector<std::thread> enqueue_threads(6);
+    std::generate(enqueue_threads.begin(), enqueue_threads.end(), [&]()
+    {
+        static size_t thread_id = 0;
+        return std::thread([thread_id = thread_id++, &queue, &enqueue_count, &enqueue_count_cv]
+        {
+            std::this_thread::sleep_for(thread_id * wait_time);
+
+            switch (thread_id)
+            {
+                case 0:
+                    queue.enqueue(scq::slot_id{0}, value_type{001}); // cart 1 [1/2]
+                    break;
+                case 1:
+                    queue.enqueue(scq::slot_id{1}, value_type{100}); // cart 2 [1/2]
+                    break;
+                case 2:
+                    queue.enqueue(scq::slot_id{1}, value_type{101}); // cart 2 [2/2]
+                    break;
+                case 3:
+                    queue.enqueue(scq::slot_id{2}, value_type{200}); // cart 3 [1/2]
+                    break;
+                case 4:
+                    queue.enqueue(scq::slot_id{1}, value_type{102}); // cart 4 [1/2] wait after 201 is inserted
+                    break;
+                case 5:
+                    queue.enqueue(scq::slot_id{2}, value_type{201}); // cart 3 [2/2]
+                    break;
+            }
+
+            ++enqueue_count;
+            enqueue_count_cv.notify_one();
+        });
+    });
+
+    // wait until at least 5 elements are inserted
+    {
+        std::unique_lock<std::mutex> enqueue_count_lock(enqueue_count_mutex);
+        enqueue_count_cv.wait(enqueue_count_lock, [&]
+        {
+            return enqueue_count.load() >= 5;
+        });
+    }
+
+    // queue should block after 5 inserts
+    std::this_thread::sleep_for(wait_time);
+    EXPECT_EQ(enqueue_count.load(), 5);
+
+    size_t full_cart_count{};
+    size_t half_filled_cart_count{};
+
+    // release one cart to allow enqueue to continue
+    {
+        scq::cart<value_type> cart = queue.dequeue();
+        EXPECT_TRUE(cart.valid());
+        std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
+
+        EXPECT_EQ(cart_data.second.size(), 2u);
+        ++full_cart_count;
+
+        for (auto && value: cart_data.second)
+        {
+            EXPECT_TRUE(expected.cross_off({cart_data.first.slot_id, value}));
+        }
+    }
+
+    for (auto && enqueue_thread: enqueue_threads)
+        enqueue_thread.join();
+    queue.close();
+
+    EXPECT_EQ(enqueue_count.load(), 6);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        scq::cart<value_type> cart = queue.dequeue();
+        EXPECT_TRUE(cart.valid());
+        std::pair<scq::slot_id, std::span<value_type>> cart_data = cart.get();
+
+        EXPECT_GE(cart_data.second.size(), 1u);
+        EXPECT_LE(cart_data.second.size(), 2u);
+
+        full_cart_count += cart_data.second.size() == 2u;
+        half_filled_cart_count += cart_data.second.size() == 1u;
+
+        for (auto && value: cart_data.second)
+        {
+            EXPECT_TRUE(expected.cross_off({cart_data.first.slot_id, value}));
+        }
+    }
+
+    EXPECT_EQ(full_cart_count, 2);
+    EXPECT_EQ(half_filled_cart_count, 2);
+
+    // all results seen
+    EXPECT_TRUE(expected.empty());
+}
+

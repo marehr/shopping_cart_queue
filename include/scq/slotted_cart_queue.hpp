@@ -177,6 +177,45 @@ class slotted_cart_queue
         std::size_t _cart_count{};
     };
 
+    struct full_carts_queue_t
+    {
+        full_carts_queue_t() = default;
+        full_carts_queue_t(cart_count cart_count) :
+            _count{0},
+            _cart_count{cart_count.cart_count}
+        {}
+
+        bool empty()
+        {
+            return _count == 0;
+        }
+
+        void enqueue()
+        {
+            ++_count;
+        }
+
+        void dequeue()
+        {
+            --_count;
+        }
+
+        void _check_invariant()
+        {
+            assert(0 <= _count);
+            assert(_count <= _cart_count);
+
+            if (!(0 <= _count))
+                throw std::runtime_error{"full_carts_queue.count: negative"};
+
+            if (!(_count <= _cart_count))
+                throw std::runtime_error{std::string{"full_carts_queue.count: FULL, _count: "} + std::to_string(_count) + " <= " + std::to_string(_cart_count)};
+        }
+
+        std::ptrdiff_t _count{};
+        std::size_t _cart_count{};
+    };
+
 public:
     using value_type = value_t;
     using cart_future_type = cart<value_type>;
@@ -310,8 +349,7 @@ private:
     std::size_t _cart_capacity{};
 
     empty_carts_queue_t _empty_carts_queue{scq::cart_count{_cart_count}};
-
-    std::ptrdiff_t _full_cart_count{}; // how many carts are full <= _cart_count
+    full_carts_queue_t _full_carts_queue{scq::cart_count{_cart_count}};
 
     using _internal_cart_type = std::pair<slot_id, std::vector<value_type>>;
 
@@ -320,14 +358,7 @@ private:
     void assert_cart_count_variant()
     {
         _empty_carts_queue._check_invariant();
-        assert(0 <= _full_cart_count);
-        assert(_full_cart_count <= _cart_count);
-
-        if (!(0 <= _full_cart_count))
-            throw std::runtime_error{"_full_cart_count: negative"};
-
-        if (!(_full_cart_count <= _cart_count))
-            throw std::runtime_error{std::string{"_full_cart_count: FULL, _full_cart_count: "} + std::to_string(_full_cart_count) + " <= " + std::to_string(_cart_count)};
+        _full_carts_queue._check_invariant();
     }
 
     void notify_processed_cart(cart_future_type & cart)
@@ -372,7 +403,7 @@ private:
 
     _internal_cart_type dequeue_slot_cart_from_full_cart_queue()
     {
-        --_full_cart_count;
+        _full_carts_queue.dequeue();
         assert_cart_count_variant();
 
         _internal_cart_type tmp = std::move(_full_cart_queue.back());
@@ -382,7 +413,7 @@ private:
 
     bool full_slot_cart_queue_is_empty()
     {
-        return _full_cart_count == 0u;
+        return _full_carts_queue.empty();
     }
 
     void move_slot_cart_into_full_cart_queue(scq::slot_id slot)
@@ -392,7 +423,7 @@ private:
         assert(slot_cart.size() > 0); // at least one element
         assert(slot_cart.size() <= slot_cart.capacity()); // at most cart capacity many elements
 
-        ++_full_cart_count;
+        _full_carts_queue.enqueue();
         assert_cart_count_variant();
 
         auto & internal_slot_cart = *slot_cart._internal_slot_cart_ptr;

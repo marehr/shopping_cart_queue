@@ -1,12 +1,18 @@
 #pragma once
 
+#include <version>
+
 #include <cassert>
 #include <condition_variable>
 #include <cstddef> // std::size_t
 #include <future> // future_error
 #include <mutex>
 #include <optional>
+#if __cpp_lib_span
 #include <span>
+#else
+#include <seqan3/std/span>
+#endif // __cpp_lib_span
 #include <stdexcept>
 #include <thread>
 #include <vector>

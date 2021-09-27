@@ -1,6 +1,8 @@
 #pragma once
 
+#if __has_include(<version>)
 #include <version>
+#endif // __has_include(<version>)
 
 #include <cassert>
 #include <condition_variable>

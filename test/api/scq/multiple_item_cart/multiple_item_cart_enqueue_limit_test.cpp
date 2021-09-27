@@ -4,7 +4,6 @@
 #include <atomic>
 #include <chrono>
 #include <set>
-#include <span>
 #include <thread>
 
 #include <scq/slotted_cart_queue.hpp>

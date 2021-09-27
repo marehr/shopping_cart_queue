@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <set>
-#include <span>
 
 #include <scq/slotted_cart_queue.hpp>
 

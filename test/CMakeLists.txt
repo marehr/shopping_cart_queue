@@ -66,6 +66,10 @@ macro (add_app_test test_filename test_alternative)
     endif ()
     add_test (NAME "${test_name}" COMMAND ${target})
 
+    if (${test_alternative} STREQUAL "API_TEST")
+        set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
+    endif ()
+
     unset (source_file)
     unset (target)
     unset (test_name)
